@@ -1,0 +1,98 @@
+/* font-size を15pxから20pxに拡大   20241015*/
+body {
+    font-size: 20px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    touch-action: none;
+    /* 20240520 add */
+    -webkit-touch-callout: none;
+
+
+}
+h1, h2 {
+    font-size: 20px;
+    margin: 2px;
+    padding: 0;
+}
+
+p {
+    font-size: 20px;
+    /* font-weight: bold;　*/
+    text-align: left;
+    margin: auto;
+}
+
+input {                         /*20241015*/
+    font-size: 20px;
+}
+
+canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+}
+#coordinates {
+    font-size: 20px;
+    font-weight: bold;
+    text-align: left;
+    margin-top: 2px;
+}
+ /* ボタンのスタイル */
+#start-button {
+    /*background-color: #f44336;
+    color: white; */
+    font-size: 20px;
+    margin-bottom: 10px;
+    z-index: 1000;
+    position: relative;
+  }
+
+#end-button {
+    /*background-color: #0004fd;
+    color: white; */
+    font-size: 20px;
+    margin-bottom: 10px;
+    z-index: 1000;
+    position: relative;
+  }
+
+#fileName-button {
+    /*background-color: #696969;
+    color: white; */
+    font-size: 20px;
+}
+
+#countButton {                              /*20241015*/
+    text-align:  center;
+    background-color: lightyellow;       /*skyblue;*/
+    /*width: 50%;*/
+    width : 50vw;                           /*add 20251225*/                       
+    height : 5vh;
+    font-weight: bold;
+    font-size: 20px;
+    padding: 5px;
+    display: block;
+    margin-top: 15px;
+    margin-bottom: 15px; 
+    margin-left: auto;
+    margin-right: auto;   
+    /*margin: auto;*/
+    z-index: 1000;
+    position: relative;
+}
+
+#target-element {                           /*add 20251225*/
+    /* width: 100%; */
+    /* height: 100%; */
+    width : 100vw;
+    height : 95vh;
+    background-size: cover;
+    
+    align-self: center;
+
+    touch-action: none;
+}

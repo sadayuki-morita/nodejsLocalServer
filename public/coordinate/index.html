@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>スマートフォン情報 & Touch Screen Coordinates</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+    <h1>スマホ & タッチ情報</h1>
+    <div id="infomation">
+        <div id="user">ユーザーエージェント:</div>
+        <div id="screen-size">画面サイズ: </div>
+        <div id="window-size">ウインドウサイズ: </div>
+        <div id="pixel-ratio">ピクセルレシオ(device/css): </div>
+        <div id="color-depth">Color Depth: </div>
+        <div id="max-touchpoint">Max touch-point: </div>
+    </div>
+
+    <!--input type="button" id="info-button" class="fixed-top-button" style="z-index: 10001;" value="ダウンロード" onclick="infoLoad()"-->
+    <input type="button" id="info-button" class="fixed-top-button" style="z-index: 10001;" value="アップロード" onclick="infoUpload()">
+
+    <h2>Touch Screen Coordinates</h2>
+    <div id="coordinates"></div>
+    <canvas id="canvas"></canvas>
+
+    <script src="script-user-info.js"></script>
+    <script src="script-draw-circle.js"></script>
+
+    <!--input type="button" class="fixed-button" style="z-index: 10001;" value="ダウンロード" onclick="dataLoad()"-->
+    <input type="button" class="fixed-button" style="z-index: 10001;" value="アップロード" onclick="upload()">
+
+</body>
+</html>

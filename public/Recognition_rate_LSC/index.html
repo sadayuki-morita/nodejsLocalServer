@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Recognition rate New test</title>
+
+    <!-- ↓↓↓ 必須ファイルの読込 ↓↓↓ -->
+    <script>
+        let preIdOperationFlug = "S1";
+        const saveIdOperationFlug  = localStorage.getItem('idOperationFlug');
+        if (saveIdOperationFlug) {  preIdOperationFlug  = saveIdOperationFlug; }
+
+        //let idOperationFlug = prompt("ID系列、タッチ方向(r)と動作(m)判定の有無を'-'で区切って入力。","S1-r-m");         //タッチ方向動作判定有り
+        let idOperationFlug = prompt("ID系列、タッチ方向(r)と動作(m)判定の有無を'-'で区切って入力。",preIdOperationFlug);         //タッチ方向動作判定無し
+        let indexDash, idSerise;
+        console.log("idOperationFlug=",idOperationFlug); 
+        indexDash =idOperationFlug.indexOf("-");
+        if(indexDash > 0){
+            idSerise =idOperationFlug.slice(0, indexDash);
+        } else{
+            idSerise =idOperationFlug;
+        }
+        console.log("idSerise=",idSerise); 
+
+        localStorage.setItem('idOperationFlug', idOperationFlug);
+        //let srcIdFile="";                   //認証IDファイル
+    </script>
+    <!--script type="text/javascript" src="./script/analyzerm-s1t4u3-ob.js" defer></script-->
+	<script type="text/javascript" src="./script/ctrlrm.js" defer></script>
+    <script type="text/javascript" src="./script/analyzerm-s1t4u3-ob.js" defer></script>
+    <link rel="stylesheet" type="text/css" href="./css/style.css" />
+
+    <script>
+        // PC server 用初期設定---------------
+        //const serverUrl = 'http://192.168.0.11:5000/Recognition_rate_LS/'       //携帯ラボ（秋葉原）
+        //const serverUrl = 'http://192.168.40.55:5000/Recognition_rate_LS/'      //小平事務所PC（第５貴志コーポ）
+        //const serverUrl = 'http://192.168.40.168:5000/Recognition_rate_LS/'      //小平事務所Linux(iMac)（第５貴志コーポ）
+        //const serverUrl = 'http://192.168.179.10:5000/Recognition_rate_LS/'     //BIGLOBE WiMAX 5G モバイルWiFI＠小平事務所（第５貴志コーポ）以外どこでも
+        //---------------
+
+        //dataArry = [maker,phone,expectCardIdNum,environment,person,count,expectCardIdNum,reCardId,passFlg,wrong_c,wrong_t,error_c,error_t,failFlg,animation,fileNameStr,fileindex,userAgent,timestamp]     
+        let dataArry = [];                  //テスト結果格納配列
+        let count = 0;                  //認識率テストのタッチ回数表示
+
+        //----------    20260121 タッチ座標解析
+        var touchAnalysisEnable= true,      //タッチ座標解析用データ取得フラグ：取得する＝true（巨大な座標データのCVSファイルがアップロードされる）、取得しない＝false
+            touchDataArry =[];              //20260121 touchID毎の座標を格納する配列 
+        //----------
+
+        const timeOptions = {           //timestampの表示オプション設定
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit', 
+            hour12: false 
+        };
+
+        let timestamp = new Date().toLocaleString('ja-JP', timeOptions); 
+
+        let fileindex = 0;
+        let passFlg = 0,
+            wrong_c = 0,
+            wrong_t = 0,
+            error_c = 0,
+            error_t = 0, 
+            failFlg = 0,
+            reCardId = "",
+            maker = "",
+            animation = "",
+            judgeStr = "",
+            codeStr = "";
+
+        //
+
+        var analyzer = null;// カード解析処理        
+
+        /*/ ↓↓↓ この変数は必要に応じて有効化 ↓↓↓ */
+        var cardConf = {
+        /*
+            'touchWaitTime': 700,							// カード識別成功時に次のタッチを受け付けるまでのインターバル(msec)
+            'showErrorAlert': true,							// エラーアラート表示フラグ
+            'touchElement': 'touch',						// タッチを受け付ける要素(ID又は要素で指定)
+            'initModalElemId': 'init_modal',				// メディア読込用モーダルの要素のID
+            'initModalDoneElemId': 'init_modal_done',		// メディア読込用モーダルを閉じる(ボタン)要素のID
+            'defaultContentsId': 'default_contents',		// 初期表示要素のID
+            'variableContentsClass': '.variable_contents',	// 動的表示切替要素のクラス
+            'elemIdPrefix': 'i',							// カード識別後、遷移ではなくコンテンツを表示する際に使用。表示要素のID属性値に指定する接頭辞で「i」を指定したなら「id="i*"」の設定された要素が表示される(*の中は1〜3の数値でカードの上側持ち手から下に向けて1,2,3となる)、HTMLパートと合わせて実装を確認して下さい
+            'willStartCollbackKey': 'start',				// カード解析処理実行直前に呼ばれるコールバックに指定するキー名
+            'onErrorCallbackKey': 'error',					// カード解析処理失敗に呼ばれるコールバックに指定するキー名
+            'okSoundElemId': 'beep_ok',						// カードタッチ成功時効果音要素のID
+            'ngSoundElemId': 'beep_ng',						// カードタッチ失敗時効果音要素のID
+            'playSound': true,								// カードタッチ後に効果音を鳴らすか否かの設定(true:鳴らす、false:鳴らさない)
+            'commonErrorMsg': 'カードが認識出来ませんでした。',	// 汎用エラーメッセージ
+        //
+            'transitTouchWaitTime': 25,							// motion制御カード移動中の識別成功時に次のタッチを受け付けるまでのインターバル(msec)
+            'motionDetectNum' : [2,2,2,1,1,0,0],                //motion制御指定配列（配列の要素番号 0:motion制御有、1:下、2:上、3:左、4:右、5:右回転、6:左回転 の値を 閾値制御の場合 1 疑似アナログ制御の場合 2 にする。例えば、上下を閾値制御、左右回転をアナログ制御したい場合は、[2,1,1,0,0,2,2]と指定する）
+            //'motionDetectNum' : [1,0,1,1,1,0,0],              //motion制御指定配列（配列の要素番号 0:motion制御有、1:下、2:上、3:左、4:右、5:右回転、6:左回転 の値を 閾値制御の場合 1 疑似アナログ制御の場合 2 にする。例えば、上下を閾値制御、左右回転をアナログ制御したい場合は、[2,1,1,0,0,2,2]と指定する）
+            'motionThresholdGridX' : 1.5,                       //motion制御X方向grid幅閾値
+            'motionThresholdGridY' : 2,                         //motion制御Y方向grid幅閾値
+            'motionThresholdAngle' : 20,                        //motion制御回転角度閾値(unit: degree)
+            'cardIdNum' : ["T4-48"],                            //認証判定するID
+            //'cardIdNum' : [],                                 //認証判定するID = CONFV8 の全ての場合、HTMLのコールバック関数内でID一致判定すること
+            'accuracy' : 2 ,                                    //グリッド座標誤差許容範囲(unit: grid)
+            'yGridMax' : 14,                                    //Y方向Grid座標最大値(unit: grid)             
+            'xbasisGridDistance' : 10,                          //基準電極間X方向距離(unit: grid)            
+            'ybasisGridDistance' : 10,                          //基準電極間Y方向距離(unit: grid)            
+            'x1basisGridCoordinate' : 2,                        //基準電極1XGrid座標
+            'y1basisGridCoordinate' : 12,                       //基準電極1XGrid座標
+            'targetRad' : -0.7853981633974483                   //基準電極を結ぶ線分とX軸の角度(unit: radian)
+            'touchedClearInterval' : 200,						//タッチイベント終了後に蓄積している座標を初期化するまでのインターバル(msec)
+
+            */
+
+            //'touchElement': document,// <- 要素指定でタッチイベントを観測する例
+            'touchElement': 'target-element',						// タッチを受け付ける要素(ID又は要素で指定)
+
+            'touchWaitTime': 1000,							    // カード識別成功時に次のタッチを受け付けるまでのインターバル(msec)
+            //'fixPosition' : true,                              //動作判定、タッチ方向判定時のpositionの戻り値制御、false : position=analyze.point , true : position=1 cardId = cardId + "-" + analyze.point
+            //'rotationDetect' : 1,                               //rotation判定指定配列（0:rotation判定無、1:rotation判定有、{判定有の場合、タッチパネルX座標軸の＋方向ベクトルと基準電極原点側から遠端側に向かうベクトルのなす角0°：callback.point=1、90°：2、180°：3、270°：4}とする。）
+            //'motionDetectNum' : [2,2,2,1,1,1,1],                //motion制御指定配列（配列の要素番号 0:motion制御有、1:下、2:上、3:左、4:右、5:右回転、6:左回転 の値を 閾値制御の場合 1 疑似アナログ制御の場合 2 にする。例えば、上下を閾値制御、左右回転をアナログ制御したい場合は、[2,1,1,0,0,2,2]と指定する）
+            //'cardIdNum' : ["S1-57","S1-107","S1-582","S1-599","S1-568","S1-536","S1-106","S1-649","S1-571","S1-96","S1-105","S1-586","S1-19"],                            //認証判定するID
+
+            //'touchedClearInterval' : 100,						//タッチイベント終了後に蓄積している座標を初期化するまでのインターバル(msec)
+	        ///'rotationThresholdAngle' : 30,                      	//rotation判定角度閾値(unit: degree)		20250305
+
+            //'transitTouchWaitTime': 20,							//motion制御カード移動中の識別成功時に次のタッチを受け付けるまでのインターバル(msec)
+            //'motionThresholdAngle' : 20,                        //motion制御回転角度閾値(unit: degree)
+            //'motionThresholdGridX' : 1,                       //motion制御X方向grid幅閾値
+            //'motionThresholdGridY' : 1,                         //motion制御Y方向grid幅閾値
+                    
+        };
+
+        var fileHeader= "rid";
+
+        if(idOperationFlug.search("r") > 0){
+            console.log('r');
+            cardConf.fixPosition= true;
+            cardConf.rotationDetect= 1;
+            fileHeader= fileHeader + "r";
+        }
+        
+        if(idOperationFlug.search("m") > 0 ){
+           console.log('m');
+            cardConf.fixPosition= true;
+            cardConf.motionDetectNum =[1,-1,1,1,1,1,1,1];           //20251113      analyzerm-s1t4u3.js Rev3.2.0対応
+            fileHeader= fileHeader + "m";
+        }       
+
+        // カード解析時に呼ばれる処理群
+        var callbacks = {
+            /* カード解析開始直前に呼ばれる処理 */
+            'start': function() { // _cardConf.willStartCollbackKey: function() {
+                /* 必要に応じて処理を実装 */
+                console.log('start analyze');
+            },
+
+            /*カードでタッチした時に呼ばれる処理 */
+            '1': function(cardId) {
+
+                //------------------- タッチ方向×動作判定 ありの場合 ----------------------------------------------
+                let resultData = 'RN=1, '+ cardId + ", r= " + parseFloat(_cardAnalyzer.touchAngleDeg.toFixed(2)) + ", X= " + parseFloat(_cardAnalyzer.motionAnalogOut[0].toFixed(2)) + ", Y= "+ parseFloat(_cardAnalyzer.motionAnalogOut[1].toFixed(2)) + ", A= " + parseFloat(_cardAnalyzer.motionAnalogOut[2].toFixed(2))+ ", T= " + parseFloat(_cardAnalyzer.motionAnalogOut[3].toFixed(2));
+                console.log(resultData);
+                
+                let index='',idNum='',positionNum='',rotPositionNum='',movPositionNum='';
+                //if(_cardConf.fixPosition){
+                    index = cardId.indexOf("-", cardId.indexOf("-") + 1);		//cardIdの先頭から２つ目の"-"の先頭文字からの位置を算出
+                    if(index > 0) {
+                        positionNum= cardId.slice(index + 1);						//コールバックポジション
+                        movPositionNum= positionNum % 10;                           //動作判定結果
+                        rotPositionNum= positionNum - movPositionNum;               //タッチ方向判定値
+                        idNum=cardId.slice(0, index);								//ID番号                   
+                    } else {
+                        idNum=cardId;
+                    }
+                    console.log("idNum=",idNum,", positionNum=",positionNum); 
+                //}
+ 
+                if(cardId === expectCardIdNum){
+                    //OK
+                    passFlg = 1; wrong_c = 0; error_c = 0; wrong_t = 0; error_t = 0; failFlg = 0;
+                    reCardId = cardId;
+                    codeStr = "";
+                    judgeStr = "Pass";
+
+                    document.getElementById("countButton").style.backgroundColor = "skyblue";
+
+                } else {
+                    passFlg = 0; wrong_c = 0; error_c = 0; wrong_t = 0; error_t = 0; failFlg = 0; codeStr = "";
+                    if(idNum !== expIdNum) { wrong_c = 1;  codeStr = "id-";}                         //ID誤認
+                    if(rotPositionNum !== expRotPositionNum) { wrong_t = 1;  codeStr = codeStr + "r-";}       //タッチ方向判定NG
+                    if(movPositionNum !== expMovPositionNum) { error_t = 1; codeStr = codeStr + "m-";}       //動作判定NG
+
+                    reCardId = cardId;
+                    judgeStr = "Fail";
+
+                    document.getElementById("countButton").style.backgroundColor = "lightcoral"; 
+                }
+
+                document.getElementById("i1text").innerHTML+=cardId + ", " + codeStr + judgeStr + "<br>";
+            
+                timestamp = new Date().toLocaleString('ja-JP', timeOptions); 
+                console.log(timestamp);
+
+                console.log(reCardId,codeStr,judgeStr);
+
+			    _cardAnalyzer.motionAnalogOut = [0,0,0,0];
+
+                return true;
+
+                /* ↑↑↑画面遷移しない場合の実装 trueを返却↑↑↑ */
+            },
+
+            '0': function(cardId){                                     //初期値取得後、カード移動中動作判定未満の場合
+
+                //document.getElementById("i1text").innerHTML+=cardId + "<br>";                
+                //timestamp = new Date().toLocaleString('ja-JP', timeOptions); 
+
+                document.getElementById('name').style.backgroundColor = "#fdff9f";           //認証後は、表題の背景色を戻す。
+
+                return true;
+            },            
+
+            /* カード解析エラー発生時に呼ばれる処理 */
+            'error': function(errorCode, errorMessage, errorId) { // cardConf.onErrorCallbackKey: function(errorCode, errorMessage, errorId) {
+                //errorCode 0: 正常, 1: 識別エラー, 3: 処理エラー
+
+                console.log('analyze error[' + analyzer.getErrorMessage(errorCode) + ']', errorMessage, errorId);                
+
+                //if(_cardConf.motionDetectNum[0] < 1){                                                         //画面表示が大量になるため出力しない。
+                //    document.getElementById("i1text").innerHTML+="errorCode" + errorCode ;  //+ "<br>";
+                //}
+
+                timestamp = new Date().toLocaleString('ja-JP', timeOptions);
+                
+                console.log(timestamp);
+
+                //NG ID変換出来ないコード
+                passFlg = 0;
+                wrong_c = 0;
+                error_c = errorCode;
+                wrong_t = 0;
+                error_t = 0;                    
+                failFlg = 0;
+                reCardId = errorId;
+                
+
+                document.getElementById("countButton").style.backgroundColor = "lightcoral"; 
+
+            }
+        };
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // ページがロードされたときに、localStorageから値を取得して表示
+            const savedPhone = localStorage.getItem('smartphone');
+            const savedCardId = localStorage.getItem('expectCardIdNum');
+            const savedPerson = localStorage.getItem('person');
+            const savedEnvironment = localStorage.getItem('environment');
+
+            if (savedPhone) { document.getElementById('smartphone').value = savedPhone; }
+            if (savedCardId) { document.getElementById('expectCardIdNum').value = savedCardId; }
+            if (savedPerson) { document.getElementById('person').value = savedPerson; }
+            if (savedEnvironment) { document.getElementById('environment').value = savedEnvironment; }
+
+            //
+            analyzer = initCtrl(callbacks, cardConf);
+
+            //analyzer.stop();
+
+         });
+
+    </script>
+</head>
+
+<body>
+    <div id="start-page" style="display: block;">
+        <h1 id="name">Recognition rate New test</h1>
+
+        <form id="inputForm">
+            <label for="smartphone">Smartphone :</label>
+            <input type="text" id="smartphone" size="15"><br>
+            <label for="cardId">Card Id(-Position):</label>
+            <input type="text" id="expectCardIdNum"  size="15"><br>
+            <label for="person">Person Name:</label>
+            <input type="text" id="person"  size="15"><br>
+            <label for="environment">Environment:</label>
+            <input type="text" id="environment"  size="15">
+        
+            <!--label for="fileNameInput">file Name:</label-->
+            <!--input type="text" id="fileNameInput" name="fileNameInput" value="filename" required-->
+            <input type="button" id="fileName-button" value="Enter" onclick="fileNameChange"><br>
+        
+        </form>
+
+        <p id="fileNameInput"></p>
+
+        <input type="button" id="start-button" value="Test Count Start" onclick="startTestCount">
+
+        <input type="button" id="end-button" value="Upload Result" onclick="upload"><br>
+
+    </div>
+
+    <div id="measer-page" style="display: none;">
+
+        <button id="countButton">0</button><!--br-->
+
+        <div id="target-element" style="background-color:lightcyan;"><!--/div-->
+            <p id="i1text"></p>
+        </div>
+    </div>
+
+    <script>
+
+        // ユーザーエージェントの取得            
+        var userAgent = '';
+        userAgent = navigator.userAgent;
+        console.log("userAgent:", userAgent);
+
+        // 各入力欄のデフォルト値を取得
+
+        var phone = document.getElementById('smartphone').value;
+        var expectCardIdNum= document.getElementById('expectCardIdNum').value;
+        var indexExp='',
+            expIdNum='',
+            expPositionNum='',
+            expRotPositionNum='',
+            expMovPositionNum=''; 
+
+        var environment = document.getElementById('environment').value;
+        var person = document.getElementById('person').value;
+
+        var fileNameStr = fileHeader + "_" + phone + "_" + expectCardIdNum + "_" + environment + "_" + person;       //認識率テスト結果格納ファイル名、
+        document.getElementById('fileNameInput').innerHTML = "File Name:<br>" + fileNameStr;
+
+
+        const element = document.getElementById('target-element');              // タッチイベントを取得する要素を取得
+
+        var fileNameButton = document.getElementById("fileName-button");        //ファイル名のヘッダー部分入力 
+        var startButton = document.getElementById("start-button");              //認識率テスト開始ボタン
+        var endButton = document.getElementById("end-button");                  //テスト終了、結果のファイルダウンロード
+        var testCountButton = document.getElementById('countButton');           //テスト回数カウントボタン
+
+        // クリックイベントのリスナーを追加
+        fileNameButton.addEventListener('click', fileNameChange);
+        startButton.addEventListener('click', startTestCount);
+        endButton.addEventListener('click', upload);         
+        testCountButton.addEventListener('click', testCount);
+
+        testCountButton.addEventListener('touchstart', testCount);
+        //window.onload = initialFunc() ;
+
+        //認識率テストのタッチ回数のカウント        
+        function testCount() {
+
+            count++;
+            document.getElementById('countButton').innerText = count;
+
+            console.log("testCount= ",count);
+
+            if(error_c > 0 ) {
+                document.getElementById("i1text").innerHTML+= "analyze err " + error_c + "<br>"; 
+            };
+
+            if((passFlg + wrong_c + wrong_t + error_c + error_t) < 0.9) {
+                failFlg = 1;
+                reCardId = "";
+                timestamp = new Date().toLocaleString('ja-JP', timeOptions);
+                document.getElementById("i1text").innerHTML+="detect error" + "<br>"; 
+            };
+
+            dataArry.push([maker,phone,expectCardIdNum,environment,person,count,expectCardIdNum,reCardId,passFlg,wrong_c,wrong_t,error_c,error_t,failFlg,animation,fileNameStr,fileindex,userAgent,timestamp]);     
+
+            console.log(dataArry);
+
+            passFlg = 0;
+            wrong_c = 0;
+            error_c = 0;
+            wrong_t = 0;
+            error_t = 0;
+            failFlg = 0;
+
+            //------- 20260121 タッチ座標解析
+            if(typeof touchAnalysisEnable=== "undefined"){touchAnalysisEnable=false;}								//touchAnalysisEnable未定義HTML対応
+
+            if(touchAnalysisEnable){
+                let interTime =  performance.now();
+                touchDataArry.push([-1,0,0,0,0,0,0,0,0,0,0,0,0,0,interTime,"interval",0,0,-1]);      //20260121 ID認証後次のタッチデータとの切替りを示すリスタート"0"データ
+                console.log("touchDataArry",touchDataArry);
+            }   
+            //-------
+
+            setTimeout(() => {
+                document.getElementById("countButton").style.backgroundColor = "lightyellow"; 
+            }, 300);
+
+            if (count >= 10) {
+                alert('10回タッチしました。アップロードして終了します。');
+                count = 0; // カウントをリセット
+                document.getElementById('countButton').innerText = count;
+
+                //表示を初期ページに戻す
+                let startPage =document.getElementById("start-page");
+                let measerPage =document.getElementById("measer-page");
+                measerPage.style.display="none";
+                startPage.style.display="block";
+
+                if(typeof touchAnalysisEnable=== "undefined"){touchAnalysisEnable=false;}								//touchAnalysisEnable未定義HTML対応
+
+                if(touchAnalysisEnable){
+                    upload2();       //解析用タッチ座標データCVSファイルのローカルホストへのアップロード
+                }
+
+                //download();  // 認識率データのjsonfile格納
+                upload();       //認識率データCVSファイルのローカルホストへのアップロード
+
+            }
+        };
+        //};
+
+
+        //入力した項目にファイル名を変更        
+        function fileNameChange(){
+            // 各入力欄の値を取得
+            phone = document.getElementById('smartphone').value;
+            expectCardIdNum = document.getElementById('expectCardIdNum').value;
+            environment = document.getElementById('environment').value;
+            person = document.getElementById('person').value;
+
+            // ファイル名を作成
+            fileNameStr = fileHeader + "_" + phone + "_" + expectCardIdNum + "_" + environment + "_" + person;
+            document.getElementById('fileNameInput').innerHTML = "File Name:<br>" + fileNameStr;
+
+            fileindex = fileindex + 1;
+
+            fileNameButton.style.backgroundColor =  "#696969";
+            fileNameButton.style.color =  "white";            
+
+            console.log("file name:", fileNameStr);
+            console.log("file Index:", fileindex); 
+            
+            //20251002
+            indexExp = expectCardIdNum.indexOf("-", expectCardIdNum.indexOf("-") + 1);		//cardIdの先頭から２つ目の"-"の先頭文字からの位置を算出
+            if(indexExp > 0) {
+                expPositionNum= expectCardIdNum.slice(indexExp + 1);						//コールバックポジション
+                expMovPositionNum= expPositionNum % 10;                                     //動作判定値、コールバックポジション 2,3,4,5,6,7
+                expRotPositionNum= expPositionNum - expMovPositionNum;                      //タッチ方向判定値、コールバックポジション 10,20,30,40
+                expIdNum=expectCardIdNum.slice(0, indexExp);								//ID番号 
+                console.log("expIdNum=",expIdNum,", expPositionNum=",expPositionNum,", expRotPositionNum=",expRotPositionNum,", expMovPositionNum=",expMovPositionNum);                     
+            }
+
+        };
+
+
+        //スタートボタンクリック後にカードタッチ待受処理開始
+        function startTestCount() {
+            if (typeof initCtrl !== 'undefined') {
+
+                console.log("start test count");
+
+                startButton.style.backgroundColor =  "#0004fd";
+                startButton.style.color =  "white";
+
+                //表示を測定ページに変更
+                let startPage =document.getElementById("start-page");
+                let measerPage =document.getElementById("measer-page");
+                startPage.style.display="none";
+                measerPage.style.display="block";
+
+                testCountButton.style.pointerEvents = "auto";
+
+                //------- 20260121 タッチ座標解析
+                if(typeof touchAnalysisEnable=== "undefined"){touchAnalysisEnable=false;}								//touchAnalysisEnable未定義HTML対応
+
+                if(touchAnalysisEnable){
+                    let startTime = performance.now();
+                    console.log("startTime",startTime);                    
+                    touchDataArry.push([-1,0,0,0,0,0,0,0,0,0,0,0,0,0,startTime,"start",0,0,-1]);      //20260121 スタート"0"データ ,no,identifier add 20260123
+                    console.log("touchDataArry",touchDataArry);
+                }   
+                //-------
+                    //analyzer = initCtrl(callbacks, cardConf);
+
+                analyzer.start()
+            }
+        };
+
+        // ファイルをアップロードする。
+        function upload() {
+
+            // ボタンが押されたときに入力データをlocalStorageに保存
+            const smartphone = document.getElementById('smartphone').value;
+            const expectCardIdNum = document.getElementById('expectCardIdNum').value;
+            const person = document.getElementById('person').value;
+            const environment = document.getElementById('environment').value;
+
+            localStorage.setItem('smartphone', smartphone);
+            localStorage.setItem('expectCardIdNum', expectCardIdNum);
+            localStorage.setItem('person', person);
+            localStorage.setItem('environment', environment);
+
+            // 現在の日付を取得
+            const currentDate = new Date();
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+            const day = String(currentDate.getDate()).padStart(2, "0");
+
+
+            // 配列データをCSV文字列に変換
+            const csvData = dataArry.map(row => row.join(",")).join("\n");
+
+            console.log("csvData= ",csvData);
+
+            // ファイル名に日付を組み込む
+            const fileName = fileNameStr + "_" + year + month + day + ".csv";
+
+            // CSVデータをBlobに変換
+            const blob = new Blob([csvData], { type: 'text/csv' });
+
+            // フォームデータを作成
+            const formData = new FormData();
+            formData.append('file', blob, fileName); // Blobとしてファイルを追加
+            formData.append('filename', fileName); // ファイル名を追加
+
+            //console.log("formData= ",formData);            
+        
+            // CSVデータをサーバーへPOSTする
+            fetch('/upload', { // サーバーのエンドポイントを指定
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(data => {
+                console.log('Success:', data);      //成功時の処理
+            })
+            .catch((error) => {
+                console.error('Error:', error);     //エラー発生時の処理
+            });
+
+            // uploadボタンの色を変更
+            endButton.style.backgroundColor =  "red";
+            endButton.style.color =  "white";
+
+            setTimeout(() => {
+                dataArry.length = 0;
+
+                endButton.style.backgroundColor =  "buttonface";
+                endButton.style.color =  "";
+                startButton.style.backgroundColor =  "buttonface";
+                startButton.style.color =  "";                
+                fileNameButton.style.backgroundColor =  "buttonface";
+                fileNameButton.style.color =  "";
+
+                console.log("Delayed for 1 second.");
+
+                location.reload();
+
+            }, 1000);                   //2000);    20241016
+
+        }
+
+                // ファイルをアップロードする。
+        function upload2() {
+
+            // 現在の日付を取得
+            const currentDate = new Date();
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+            const day = String(currentDate.getDate()).padStart(2, "0");
+
+            // 配列データをCSV文字列に変換
+            const csvData = touchDataArry.map(row => row.join(",")).join("\n");
+
+            //console.log("csvData= ",csvData);
+
+            // ファイル名に日付を組み込む
+            const fileName = "crd_" + fileNameStr + "_" + year + month + day + ".csv";
+
+                // CSVデータをBlobに変換
+                const blob = new Blob([csvData], { type: 'text/csv' });
+
+                // フォームデータを作成
+                const formData = new FormData();
+                formData.append('file', blob, fileName); // Blobとしてファイルを追加
+                formData.append('filename', fileName); // ファイル名を追加
+
+                //console.log("formData= ",formData);            
+            
+                // CSVデータをサーバーへPOSTする
+                fetch('/upload', { // サーバーのエンドポイントを指定
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.text())
+                .then(data => {
+                    console.log('Success:', data);      //成功時の処理
+                })
+                .catch((error) => {
+                    console.error('Error:', error);     //エラー発生時の処理
+                });
+        }
+
+    </script>
+
+</body>
+</html>

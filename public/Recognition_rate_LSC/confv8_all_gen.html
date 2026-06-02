@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="format-detection" content="telephone=no">
+<!--
+<meta http-equiv="pragma" content="no-cache" />
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="expires" content="0" />
+-->
+<title>MultiTouchCard(DEMO)</title>
+
+<script type="text/javascript" src="./script/c/cs1.php"></script>
+
+<script>
+
+//14行に変換したいエンコードされたID配列ファイルを記述し、
+//Open with Live Server でこのHTMLを開いて、検証（デバックモード）を開くと、コンソールログに、confv8に張り付けるバイナリ変換後IDコードが生成され、58行のconsole.log()が表示されているので、
+// 右クリックで「オブジェクトのコピー」でコピペすると、confv8配列のエンコードされたID座標配列を貼り付けることができます。
+
+
+var Base64={
+		encode: function(str) { 
+			return btoa(unescape(encodeURIComponent(str))); 
+		}, 
+		decode: function(str) { 
+			return decodeURIComponent(escape(atob(str))); 
+		}
+	};
+
+//let key = 'MjAyNTA5MzAyMzU5NTk=';
+let key = 'MjAyMzEyMzEyMzU5NTk=';
+
+var arrayData0 = CONFV8;
+
+var arryDecodeData =[];
+var arryEncodeData =[];
+
+        let row=Base64.decode(key);
+        console.log('key= "' + key +'",' );        
+        console.log('row= "' + row +'",' );
+
+/*
+for (let ix1=0; ix1 < ENCODV8.length; ix1++) {
+        let row=Base64.encode(ENCODV8[ix1]);
+        //console.log('"' + row +'",' );
+        arryData.push(row);
+}
+*/
+function convertToConfv8() {
+//
+for (let ix1=0; ix1 < arrayData0.length; ix1++) {
+        let row=Base64.decode(arrayData0[ix1]);
+        //console.log(row);
+        arryDecodeData.push(row);
+}
+
+console.log(arryDecodeData);
+
+for (let ix1=0; ix1 < arryDecodeData.length; ix1++) {
+        let row=Base64.encode(arryDecodeData[ix1]);
+        //console.log('"' + row +'",' );
+        arryEncodeData.push(row);
+}
+console.log(arryEncodeData);
+
+}
+
+convertToConfv8();
+
+
+//
+</script>
+</head>
+
