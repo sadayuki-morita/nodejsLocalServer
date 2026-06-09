@@ -24,6 +24,14 @@
         console.log("idSerise=",idSerise); 
 
         localStorage.setItem('idOperationFlug', idOperationFlug);
+
+        let uploadFlg=true;     //multi-touchcard.comでアクセスされた場合は、アップロード処理を行わずスマホダウンロードホルダに格納するフラグ  20260609
+        let currentUrl = window.location.href;
+        if(currentUrl.includes("multi-touchcard.com")){
+            uploadFlg=false;
+            console.log("currentUrl=",currentUrl);
+            console.log("uploadFlg=",uploadFlg);
+        }
         //let srcIdFile="";                   //認証IDファイル
     </script>
     <!--script type="text/javascript" src="./script/analyzerm-s1t4u3-ob.js" defer></script-->
@@ -352,6 +360,12 @@
         testCountButton.addEventListener('touchstart', testCount);
         //window.onload = initialFunc() ;
 
+        if(!uploadFlg){                 //multi-touchcard.comでアクセスされた場合は、アップロード処理を行わずスマホダウンロードホルダに格納するため、終了ボタンをダウンロード用に変更   20260609
+            endButton.value="Download Result";
+            endButton.onclick="download";
+            endButton.addEventListener('click', download);   
+        }
+
         //認識率テストのタッチ回数のカウント        
         function testCount() {
 
@@ -397,7 +411,7 @@
             }, 300);
 
             if (count >= 10) {
-                alert('10回タッチしました。アップロードして終了します。');
+                alert('10回タッチしました。データ保存して終了します。');
                 count = 0; // カウントをリセット
                 document.getElementById('countButton').innerText = count;
 
@@ -410,11 +424,19 @@
                 if(typeof touchAnalysisEnable=== "undefined"){touchAnalysisEnable=false;}								//touchAnalysisEnable未定義HTML対応
 
                 if(touchAnalysisEnable){
-                    upload2();       //解析用タッチ座標データCVSファイルのローカルホストへのアップロード
+                    if(uploadFlg){
+                         upload2();       //解析用タッチ座標データCVSファイルのローカルホストへのアップロード
+                    } else {
+                         download2();      //解析用タッチ座標データCVSファイルのスマホダウンロードホルダへの格納
+                    }
                 }
 
                 //download();  // 認識率データのjsonfile格納
-                upload();       //認識率データCVSファイルのローカルホストへのアップロード
+                if(uploadFlg){
+                    upload();       //認識率データCVSファイルのローカルホストへのアップロード
+                } else {
+                    download();      //認識率データのjsonfile格納
+                }
 
             }
         };
@@ -601,6 +623,114 @@
                     console.error('Error:', error);     //エラー発生時の処理
                 });
         }
+
+        // ファイルとして保存する
+        function download() {
+
+            // ボタンが押されたときに入力データをlocalStorageに保存
+            const smartphone = document.getElementById('smartphone').value;
+            const expectCardIdNum = document.getElementById('expectCardIdNum').value;
+            const person = document.getElementById('person').value;
+            const environment = document.getElementById('environment').value;
+
+            localStorage.setItem('smartphone', smartphone);
+            localStorage.setItem('expectCardIdNum', expectCardIdNum);
+            localStorage.setItem('person', person);
+            localStorage.setItem('environment', environment);
+
+            // 現在の日付を取得
+            const currentDate = new Date();
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+            const day = String(currentDate.getDate()).padStart(2, "0");
+            
+
+            // 配列データをCSV文字列に変換
+            const csvString = dataArry.map(row => row.join(",")).join("\n");
+
+            // ファイル名に日付を組み込む
+            const fileName = fileNameStr + "_" + year + month + day;      // ".json";
+
+            // Blobオブジェクトを作成する            
+            const blob = new Blob([csvString], { type: 'text/csv' });
+
+            // Blob URLを作成する
+            const url = URL.createObjectURL(blob);
+
+            // <a>タグを作成する
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+
+            // <a>タグをクリックする
+            link.click();
+
+            // URLを解放する
+            URL.revokeObjectURL(url);
+
+            // uploadボタンの色を変更
+            endButton.style.backgroundColor =  "red";
+            endButton.style.color =  "white";
+
+            setTimeout(() => {
+                dataArry.length = 0;
+
+                endButton.style.backgroundColor =  "buttonface";
+                endButton.style.color =  "";
+                startButton.style.backgroundColor =  "buttonface";
+                startButton.style.color =  "";                
+                fileNameButton.style.backgroundColor =  "buttonface";
+                fileNameButton.style.color =  "";
+
+                console.log("Delayed for 1 second.");
+
+                location.reload();
+
+            }, 1000);                   //2000);    20241016
+
+        }
+
+        function download2() {
+
+            // 現在の日付を取得
+            const currentDate = new Date();
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+            const day = String(currentDate.getDate()).padStart(2, "0");
+
+            // 配列データをCSV文字列に変換
+            const csvData = touchDataArry.map(row => row.join(",")).join("\n");
+
+            //console.log("csvData= ",csvData);
+
+            // ファイル名に日付を組み込む
+            const fileName = "crd_" + fileNameStr + "_" + year + month + day + ".csv";
+
+            // CSVデータをBlobに変換
+            const blob = new Blob([csvData], { type: 'text/csv' });
+
+
+            // Blob URLを作成する
+            const url = URL.createObjectURL(blob);
+
+            // <a>タグを作成する
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+
+            // <a>タグをクリックする
+            link.click();
+
+            // URLを解放する
+            URL.revokeObjectURL(url);
+
+            //console.log("formData= ",formData);    
+
+        }
+
+        
 
     </script>
 

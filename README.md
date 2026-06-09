@@ -2,6 +2,7 @@
 
 - ローカルサーバー、Node.jsで動作。（Xamppは、立上げ不要）
 - スマホ、認証結果等をファイルに落とし、ローカルサーバーにアップロードして情報を取得する
+- /Recognition_rate_LSC をhttps://multi-touchcard.com/ のサーバーに格納して、そのURL上で認証評価実施すると、評価結果をサーバーアップロードせずに、スマホのDownloadホルダに格納する。 
 
 
 ## ディレクトリ構造
@@ -48,20 +49,26 @@
 
   ### 使い方
 
-  1. ローカルサーバー
-    -  dataSave.jsのあるディレクトリの下でターミナルを開き(Open Git Bash Here等)、  
-         `$ node dataSave.js`  
-      と入力してローカルサーバーを立ち上げる。（portは、5000）  
-      - 小平事務所PCの場合：`C:\xampp\htdocs\dev\test\nodejsLocalServer`  
-      - 小平事務所Linuxの場合：`/home/morita/Documents/dev/nodejsLocalServer`  
-    - ブラウザに表示させるhtmlは、'public'ディレクトリの下に設ける（ディレクトリで階層作ることは問題なし）
-    - スマホのブラウザで、以下にアクセスする。Wi‐Fiの接続先に合わせてIPを変える。
-      - 小平事務所PCの場合：'http://192.168.40.55:5000/Recognition_rate_LSC/' 
-      - 小平事務所Linuxの場合：'http://192.168.40.168:5000/Recognition_rate_LSC/'
-    - アクセスすると、"Recognition_rate_New"と同じ仕様の認識率評価ページが表示される。
-    - ローカルサーバーは、アクセスポイント、portが異なれば、同時に立上げ可能。logger.jsのC-Stamp2認識率評価と同時に実行可能。
+  1. サーバー  
+    + ローカルサーバー
+      -  dataSave.jsのあるディレクトリの下でターミナルを開き(Open Git Bash Here等)、  
+          `$ node dataSave.js`  
+        と入力してローカルサーバーを立ち上げる。（portは、5000）  
+        - 小平事務所PCの場合：`C:\xampp\htdocs\dev\test\nodejsLocalServer`  
+        - 小平事務所Linuxの場合：`/home/morita/Documents/dev/nodejsLocalServer`  
+      - ブラウザに表示させるhtmlは、'public'ディレクトリの下に設ける（ディレクトリで階層作ることは問題なし）
+      - スマホのブラウザで、以下にアクセスする。Wi‐Fiの接続先に合わせてIPを変える。
+        - 小平事務所PCの場合：'http://192.168.40.55:5000/Recognition_rate_LSC/' 
+        - 小平事務所Linuxの場合：'http://192.168.40.168:5000/Recognition_rate_LSC/'
+      - アクセスすると、"Recognition_rate_New"と同じ仕様の認識率評価ページが表示される。
+      - ローカルサーバーは、アクセスポイント、portが異なれば、同時に立上げ可能。logger.jsのC-Stamp2認識率評価と同時に実行可能。
 
-  2. スマホ ブラウザ認識率評価ページ
+    + multi-touchcard.com サーバー
+      - https://multi-touchcard.com/Recgnition_rate_LSC/ にスマホからアクセスしてローカルサーバーの場合と同様に評価測定を実施する。
+      - 評価結果データファイル、タッチ座標解析結果ファイル共にローカルサーバーではなく、評価スマートフォンのDownloadホルダに格納される。
+      - データ形式、ファイル名は、ローカルサーバーでの評価と同一。評価後にPCと接続してファイルをPCにカット・アンド・ペーストして同様にデータ集計可能。
+
+  2. スマホ ブラウザ認識率評価ページ  
     - 読み込み時にプロンプトのポップアップ入力画面で、"ID系列、タッチ方向(r)と動作(m)判定の有無を'-'で区切って入力。"  
     と入力表示されるので、以下のID系列のいずれかを入力  
       - 評価可能ID系列："ID1"、"S1"、"T4"、"U3"、"U1"  
@@ -150,6 +157,7 @@
 - cardConfの記述ファイル変更。 不用なコンソールログ削除、アナライザソースのHTMLに依存するgetElementコード削除   20260204
 - デモページ群およびSDKのアナライザソースとの共用化　20260601                                    
 - Recogintion_rate_LSCの cardConfの測定間待ち時間1秒に変更`'touchWaitTime': 1000,`、それ以外のパラメータはデフォルト。README.mdの説明修正 20260602
+- multi-touchcard.com上で動作させた時には、測定結果ファイルをアプロードせずに、評価スマホのDownloadホルダに格納するように修正   20260609
 
 
 
