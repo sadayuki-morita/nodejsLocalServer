@@ -13,24 +13,59 @@
 
         let dataArry = [];                  //テスト結果格納配列
 
+        // 測定条件の組み合わせを生成
+
         let measDevice = ["card","coaster","acsta","plate"];
+        let modePosition=["ID認証","移動"];
         let rotePosition=[["前向き",10],["後向き",30],["左向き",40],["右向き",20]];
-        let movePosition=[["ID認証",1],["下移動",2],["上移動",3],["右移動",4],["左移動",5],["左回転",6],["右回転",7]];
+        let movePosition=[["下移動",2],["上移動",3],["右移動",4],["左移動",5],["左回転",6],["右回転",7]];
+
+        let countNum = 0;
+        let newText = [];
+        let newValue = [];
+
+        measDevice = ["card"];
 
         for(let i=0; i < measDevice.length; i++){
-            console.log(measDevice[i]+"-"+movePosition[0][0],movePosition[0][1]);
-            for(let j=0; j < rotePosition.length; j++){
-                for(let k=1; k < movePosition.length; k++){
-                    if((measDevice[i]=="card" || measDevice[i]=="coaster") && (rotePosition[j][0]=="前向き" || rotePosition[j][0]=="後向き")){
-                        continue;
+            for(let m=0; m < modePosition.length; m++){
+                if(modePosition[m]=="ID認証" ){
+                    console.log(measDevice[i]+"-"+modePosition[m]);
+                    newText[countNum] = measDevice[i]+"-"+modePosition[m];
+                    newValue[countNum] = 1;
+                    countNum=countNum + 1;                    
+                    continue;
+                }
+                for(let j=0; j < rotePosition.length; j++){
+                    for(let k=0; k < movePosition.length; k++){
+                        if((measDevice[i]=="card" || measDevice[i]=="coaster") && (rotePosition[j][0]=="前向き" || rotePosition[j][0]=="後向き")){
+                            continue;
+                        }
+                        if((measDevice[i]=="card" || measDevice[i]=="coaster") && (movePosition[k][0]=="左回転" || movePosition[k][0]=="右回転")){
+                            continue;
+                        }
+                        console.log(measDevice[i]+"-"+rotePosition[j][0]+"-"+movePosition[k][0],rotePosition[j][1] + movePosition[k][1]);
+                        newText[countNum] = measDevice[i]+"-"+rotePosition[j][0]+"-"+movePosition[k][0];
+                        newValue[countNum] = rotePosition[j][1] + movePosition[k][1];
+                        countNum=countNum + 1;
                     }
-                    if((measDevice[i]=="card" || measDevice[i]=="coaster") && (movePosition[k][0]=="左回転" || movePosition[k][0]=="右回転")){
-                        continue;
-                    }
-                    console.log(measDevice[i]+"-"+rotePosition[j][0]+"-"+movePosition[k][0],rotePosition[j][1] + movePosition[k][1]);
                 }
             }
         }
+
+        // 測定条件のElementを生成
+        function addElememt() {
+            const measList = document.getElementById("meas-list");
+            for(let i=0; i < newText.length; i++){
+                var measElement = document.createElement("p");
+                measElement.textContent = newText[i]+"("+newValue[i]+")";
+                measElement.id = "meas"+i;
+                measElement.value = newValue[i];   
+                measList.appendChild(measElement);
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", addElememt);
+
 
         function sendMail(){
 
@@ -213,6 +248,8 @@
         </form><br>
 
         <input type="button" id="end-button" value="Upload Result" onclick="upload()"><br>
+
+        <div id="meas-list"></div>
 
         <div id="target-element" style="background-color:lightcyan;"><!--/div-->
             <p id="i1text"></p>

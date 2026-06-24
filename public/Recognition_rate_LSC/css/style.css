@@ -52,8 +52,6 @@ canvas {
   }
 
 #end-button {
-    /*background-color: #0004fd;
-    color: white; */
     font-size: 20px;
     margin-bottom: 10px;
     z-index: 1000;
@@ -65,6 +63,17 @@ canvas {
     color: white; */
     font-size: 20px;
 }
+
+#send-button {
+    /*background-color: #0004fd;
+    color: white; */
+    position: fixed; /* ボタンを固定位置に配置 */
+    bottom: 25px; /* 画面下からの距離 */
+    font-size: 20px;
+    margin-bottom: 10px;
+    z-index: 1000;
+    /*position: relative;*/
+  }
 
 #countButton {                              /*20241015*/
     text-align:  center;

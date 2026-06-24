@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Recognition rate Auto Evaluation</title>
+
+    <!-- ↓↓↓ 必須ファイルの読込 ↓↓↓ -->
+    <script>
+    /* Rev.1.1 20260624
+    　##社外ユーザー評価依頼用認識率評価ページ
+        - 製品サンプルとそのID、測定仕様の初期設定を配列に記載することで、その測定条件を順次ブラウザのページに設定して、測定を行う
+        - 測定は、認証判定タッチ->測定回数カウント(カウントバータッチ)を繰り替えし、10回測定すると自動的に測定Logファイルとタッチ座標データファイルを作成する。
+            - ファイルの保存の場所と方法は、以下のパラメータで制御する
+                + uploadFlg ：アップロードを行うかどうかのフラグ true:行う、false：スマホのダウンロードフォルダに格納
+                + uploadAccessPath ：node.jsでアップロード処理を行う場合：true、phpでアップロード処理を行う場合：false 
+                + currentUrl ：multi-touchcard.comでアクセスされた場合は、upload.phpでアップロード処理を行う 
+            - ファイルは、両方ともCSV形式。Logの配列要素項目は、従来のC-Stamp Logger.jsのLogファイルと異なり、product（品種）が追加されている。
+        - 測定条件は、localStorageに保存されるので、測定途中でブラウザクローズ、ページ遷移、スマホ画面クローズ、スマホ電源OFFのいずれもOK。
+        - 測定完了後、完了ボタンを押すと自動的にメーラーが立ち上がりアンケートが本文に記載されたメールの下書きが立ち上がるのでアンケートに回答してメール送信してもらう仕様
+        - 途中の測定条件だけを(再)測定する場合、Test Number:の値を当該測定条件に変更し、［Enter］を入力するとその条件から測定出来る。
+        - 途中の条件で止める場合、Test Number:の値を”-1”に変更し、［Enter］を入力、ブラウザのリロードをタップすると、測定終了し、測定者入力画面に戻る。
+        - Test Number:の値を測定条件数−１より大きな値に変更し、［Enter］を入力した場合、ブラウザのリロードをタップすると、測定終了し、測定者入力画面に戻る。
+    */
+   
+    /* 初期設定 20260623 */
+    //--------------------------------------
+        var rawMeasNumber = localStorage.getItem('measNum');
+        var measNumber = rawMeasNumber === null ? -1 : parseInt(rawMeasNumber, 10);
+        if (!Number.isFinite(measNumber)) {
+            measNumber = -1;
+        }
+        var rawMaxMeasNumber = localStorage.getItem('maxMeasNum');
+        var maxMeasNumber = parseInt(rawMaxMeasNumber, 10);
+        if(measNumber > maxMeasNumber){
+            measNumber = -1;
+        }
+        var prePersonCode  = localStorage.getItem('person');
+        if (measNumber === -1) { 
+            measNumber = 0;
+            var personCode = prompt("パーソンコードを入力してください",prePersonCode);         //personコードの入力を促すプロンプトを表示し、入力された値をpersonに格納する。デフォルト値は"M1L"。
+            localStorage.setItem('person', personCode);                         //測定者コード
+        }
+        //測定条件生成準備
+        var measDevice = [["card","S1-1757"],["acsta","S1-106"],["plate","S1-106"]];                        //測定品種,ID番号の2次元配列を設定する　今回は、コースター["coaster","S1-761"]無し        
+        //var measDevice = [["acsta","S1-106"],["plate","S1-106"]];                        //測定品種,ID番号の2次元配列を設定する　今回は、コースター無し        
+        //var measOperation = ["S1"];                                                            //測定動作の種類を設定する　今回は、ID認証(S1)、タッチ方向と動作の両方(S1-r-m)の判定の2種類
+        var measOperation = ["S1","S1-r-m"];                                                            //測定動作の種類を設定する　今回は、ID認証(S1)、タッチ方向と動作の両方(S1-r-m)の判定の2種類
+        var measSmartphone = ["SCG25"];                                                                 //測定スマホの種類を設定する　今回は、Xperia 10 III Liteの1種類のみ
+
+        var uploadFlg=true;                                         //アップロードを行うかどうかのフラグ true:行う、false：スマホのダウンロードフォルダに格納 20260612
+        var uploadAccessPath = true;                                //node.jsでアップロード処理を行う場合：true、phpでアップロード処理を行う場合：false 20260612
+        var currentUrl = window.location.href;
+        if(currentUrl.includes("multi-touchcard.com")){             //multi-touchcard.comでアクセスされた場合は、upload.phpでアップロード処理を行う  20260612
+            uploadAccessPath = false;
+        }
+        //uploadFlg=false;
+        console.log("currentUrl=",currentUrl);
+        console.log("uploadFlg=",uploadFlg);
+        console.log("uploadAccessPath=",uploadAccessPath);
+
+        
+    //--------------------------------------
+        //測定条件の表示データの生成準備
+        let modePosition=[["ID認証","S1"],["タッチ方向","S1-r"],["動作","S1-m"],["タッチ方向x動作","S1-r-m"]];
+        let rotePosition=[["前向き",10],["後向き",30],["左向き",40],["右向き",20]];
+        let movePosition=[["下移動",2],["上移動",3],["右移動",4],["左移動",5],["左回転",6],["右回転",7]];
+
+        let countNum = 0;
+        var measCondArry = [];
+        var measIdArry = [];
+        var measPositionArry = [];
+
+        //let idOperationFlug = prompt("ID系列、タッチ方向(r)と動作(m)判定の有無を'-'で区切って入力。","S1-r-m");         //タッチ方向動作判定有り
+        //let idOperationFlug = prompt("ID系列、タッチ方向(r)と動作(m)判定の有無を'-'で区切って入力。",preIdOperationFlug);         //タッチ方向動作判定無し
+        //console.log("modePosition[0][1]",modePosition[0][1]);
+
+        var indexDash, idOperationFlug;     //IdSrease
+        //console.log("idOperationFlug=",idOperationFlug); 
+        //localStorage.setItem('idOperationFlug', idOperationFlug);
+
+        for(let o=0; o < measOperation.length; o++){
+            idOperationFlug = measOperation[o]
+
+            indexDash =idOperationFlug.indexOf("-");
+            if(indexDash > 0){
+                idSerise =idOperationFlug.slice(0, indexDash);
+            } else{
+                idSerise =idOperationFlug;
+            }
+            console.log("idSerise=",idSerise); 
+            console.log("idOperationFlug=",idOperationFlug); 
+
+            if(indexDash < 0){      //ID認証のみの場合
+                console.log(modePosition[0][0]);
+                for(let i=0; i < measDevice.length; i++){
+                    measCondArry[countNum] = [ measDevice[i][0], measDevice[i][1], modePosition[0][0], modePosition[0][1]];
+                    measPositionArry[countNum] = modePosition[0][0];
+                    countNum=countNum + 1;                   
+                }
+            } else {
+                if(idOperationFlug.search("r") > 0 ){
+                    if(idOperationFlug.search("m") > 0){        //タッチ方向と動作の両方の判定がある場合
+                        console.log(modePosition[3][0]);
+                        for(let i=0; i < measDevice.length; i++){
+                            for(let m=0; m < rotePosition.length; m++){
+                                for(let k=0; k < movePosition.length; k++){
+                                    if((measDevice[i][0]=="card" || measDevice[i][0]=="coaster") && (rotePosition[m][0]=="前向き" || rotePosition[m][0]=="後向き")){
+                                        continue;
+                                    }
+                                    if((measDevice[i][0]=="card" || measDevice[i][0]=="coaster") && (movePosition[k][0]=="左回転" || movePosition[k][0]=="右回転")){
+                                        continue;
+                                    }
+                                    let idPosition= measDevice[i][1] + "-" + (rotePosition[m][1] + movePosition[k][1]);
+                                    measCondArry[countNum] = [ measDevice[i][0], idPosition, modePosition[3][0] , modePosition[3][1] ];
+                                    measPositionArry[countNum] = rotePosition[m][0] + movePosition[k][0];
+                                    countNum=countNum + 1;
+                                }
+                            }
+                        }
+                    } else {                                        //タッチ方向の判定のみがある場合
+                        console.log(modePosition[1][0]);
+                        for(let i=0; i < measDevice.length; i++){
+                            for(let m=0; m < rotePosition.length; m++){
+                                if((measDevice[i][0]=="card" || measDevice[i][0]=="coaster") && (rotePosition[m][0]=="前向き" || rotePosition[m][0]=="後向き")){
+                                    continue;
+                                }
+                                let idPosition= measDevice[i][1] + "-" + rotePosition[m][1];
+                                measCondArry[countNum] = [ measDevice[i][0], idPosition, modePosition[1][0] , modePosition[1][1] ];
+                                measPositionArry[countNum] = rotePosition[m][0];
+                                countNum=countNum + 1;
+                            }
+                        }
+                    }
+                } else if(idOperationFlug.search("m") > 0){       //動作の判定のみがある場合
+                    console.log(modePosition[2][0]);
+                    for(let i=0; i < measDevice.length; i++){
+                        for(let k=0; k < movePosition.length; k++){
+                            if((measDevice[i][0]=="card" || measDevice[i][0]=="coaster") && (movePosition[k][0]=="左回転" || movePosition[k][0]=="右回転")){
+                                continue;
+                            }
+                            let idPosition= measDevice[i][1] + "-" + movePosition[k][1];
+                            measCondArry[countNum] = [ measDevice[i][0], idPosition, modePosition[2][1] , modePosition[2][1] ];
+                            measPositionArry[countNum] = movePosition[k][0];
+                            countNum=countNum + 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        console.log("measCondArry.length=",measCondArry.length);
+        console.log("measCondArry=",measCondArry);
+        //console.log("measPositionArry=",measPositionArry);
+        console.log("countNum=",countNum);
+        console.log("measNumber=",measNumber);
+
+        if (!Array.isArray(measCondArry[measNumber])) {
+            console.error("Invalid measNumber", measNumber, "measCondArry.length=", measCondArry.length);
+            measNumber = 0;
+        }
+
+        //今回測定条件の固定値の初期設定表示データの生成準備
+        localStorage.setItem('idOperationFlug',  measCondArry[measNumber][3]);
+        localStorage.setItem('smartphone',measSmartphone[0]);                           //スマホ名
+        localStorage.setItem('expectCardIdNum', measCondArry[measNumber][1]);           //期待カードID番号         
+        //localStorage.setItem('person', personCode);                                   //測定者コード
+        localStorage.setItem('product', measCondArry[measNumber][0]);                   //最初の測定品種
+        localStorage.setItem('environment', "hand");                                    //測定環境、現状"hand"固定
+        localStorage.setItem('measNum', measNumber);                                    //測定条件番号、0から始まる連番で、測定条件の配列の順番に対応させる。           
+        localStorage.setItem('maxMeasNum', measCondArry.length);                        //最大測定条件番号＝測定条件配列長
+
+        measNumber = localStorage.getItem('measNum');
+        idOperationFlug = localStorage.getItem('idOperationFlug');
+        var phoneStr = localStorage.getItem('smartphone');
+        var expectCardIdNumber = localStorage.getItem('expectCardIdNum');
+        personCode = localStorage.getItem('person');
+        var productStr = localStorage.getItem('product');
+        var environmentStr = localStorage.getItem('environment');
+        console.log("L167 idOperationFlug=",idOperationFlug);  
+        console.log("L168 measNumber",measNumber);
+
+    </script>
+    <!--script type="text/javascript" src="./script/analyzerm-s1t4u3-ob.js" defer></script-->
+	<script type="text/javascript" src="./script/ctrlrm.js" defer></script>
+    <script type="text/javascript" src="./script/analyzerm-s1t4u3-ob.js" defer></script>
+    <link rel="stylesheet" type="text/css" href="./css/style.css" />
+
+    <script>
+        // PC server 用初期設定---------------
+        //const serverUrl = 'http://192.168.0.11:5000/Recognition_rate_LS/'       //携帯ラボ（秋葉原）
+        //const serverUrl = 'http://192.168.40.55:5000/Recognition_rate_LS/'      //小平事務所PC（第５貴志コーポ）
+        //const serverUrl = 'http://192.168.40.168:5000/Recognition_rate_LS/'      //小平事務所Linux(iMac)（第５貴志コーポ）
+        //const serverUrl = 'http://192.168.179.10:5000/Recognition_rate_LS/'     //BIGLOBE WiMAX 5G モバイルWiFI＠小平事務所（第５貴志コーポ）以外どこでも
+        //---------------
+
+        //dataArry = [maker,phone,expectCardIdNum,environment,person,count,expectCardIdNum,reCardId,passFlg,wrong_c,wrong_t,error_c,error_t,failFlg,animation,fileNameStr,fileindex,userAgent,timestamp]     
+        let dataArry = [];                  //テスト結果格納配列
+        let count = 0;                  //認識率テストのタッチ回数表示
+
+        //----------    20260121 タッチ座標解析
+        var touchAnalysisEnable= true,      //タッチ座標解析用データ取得フラグ：取得する＝true（巨大な座標データのCVSファイルがアップロードされる）、取得しない＝false
+            touchDataArry =[];              //20260121 touchID毎の座標を格納する配列 
+        //----------
+
+        const timeOptions = {           //timestampの表示オプション設定
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit', 
+            hour12: false 
+        };
+
+        let timestamp = new Date().toLocaleString('ja-JP', timeOptions); 
+
+        let fileindex = 0;
+        let passFlg = 0,
+            wrong_c = 0,
+            wrong_t = 0,
+            error_c = 0,
+            error_t = 0, 
+            failFlg = 0,
+            reCardId = "",
+            maker = "",
+            animation = "",
+            judgeStr = "",
+            codeStr = "";
+
+        //
+
+        var analyzer = null;// カード解析処理        
+
+        /*/ ↓↓↓ この変数は必要に応じて有効化 ↓↓↓ */
+        var cardConf = {
+        /*
+            'touchWaitTime': 700,							// カード識別成功時に次のタッチを受け付けるまでのインターバル(msec)
+            'showErrorAlert': true,							// エラーアラート表示フラグ
+            'touchElement': 'touch',						// タッチを受け付ける要素(ID又は要素で指定)
+            'initModalElemId': 'init_modal',				// メディア読込用モーダルの要素のID
+            'initModalDoneElemId': 'init_modal_done',		// メディア読込用モーダルを閉じる(ボタン)要素のID
+            'defaultContentsId': 'default_contents',		// 初期表示要素のID
+            'variableContentsClass': '.variable_contents',	// 動的表示切替要素のクラス
+            'elemIdPrefix': 'i',							// カード識別後、遷移ではなくコンテンツを表示する際に使用。表示要素のID属性値に指定する接頭辞で「i」を指定したなら「id="i*"」の設定された要素が表示される(*の中は1〜3の数値でカードの上側持ち手から下に向けて1,2,3となる)、HTMLパートと合わせて実装を確認して下さい
+            'willStartCollbackKey': 'start',				// カード解析処理実行直前に呼ばれるコールバックに指定するキー名
+            'onErrorCallbackKey': 'error',					// カード解析処理失敗に呼ばれるコールバックに指定するキー名
+            'okSoundElemId': 'beep_ok',						// カードタッチ成功時効果音要素のID
+            'ngSoundElemId': 'beep_ng',						// カードタッチ失敗時効果音要素のID
+            'playSound': true,								// カードタッチ後に効果音を鳴らすか否かの設定(true:鳴らす、false:鳴らさない)
+            'commonErrorMsg': 'カードが認識出来ませんでした。',	// 汎用エラーメッセージ
+        //
+            'transitTouchWaitTime': 25,							// motion制御カード移動中の識別成功時に次のタッチを受け付けるまでのインターバル(msec)
+            'motionDetectNum' : [2,2,2,1,1,0,0],                //motion制御指定配列（配列の要素番号 0:motion制御有、1:下、2:上、3:左、4:右、5:右回転、6:左回転 の値を 閾値制御の場合 1 疑似アナログ制御の場合 2 にする。例えば、上下を閾値制御、左右回転をアナログ制御したい場合は、[2,1,1,0,0,2,2]と指定する）
+            //'motionDetectNum' : [1,0,1,1,1,0,0],              //motion制御指定配列（配列の要素番号 0:motion制御有、1:下、2:上、3:左、4:右、5:右回転、6:左回転 の値を 閾値制御の場合 1 疑似アナログ制御の場合 2 にする。例えば、上下を閾値制御、左右回転をアナログ制御したい場合は、[2,1,1,0,0,2,2]と指定する）
+            'motionThresholdGridX' : 1.5,                       //motion制御X方向grid幅閾値
+            'motionThresholdGridY' : 2,                         //motion制御Y方向grid幅閾値
+            'motionThresholdAngle' : 20,                        //motion制御回転角度閾値(unit: degree)
+            'cardIdNum' : ["T4-48"],                            //認証判定するID
+            //'cardIdNum' : [],                                 //認証判定するID = CONFV8 の全ての場合、HTMLのコールバック関数内でID一致判定すること
+            'accuracy' : 2 ,                                    //グリッド座標誤差許容範囲(unit: grid)
+            'yGridMax' : 14,                                    //Y方向Grid座標最大値(unit: grid)             
+            'xbasisGridDistance' : 10,                          //基準電極間X方向距離(unit: grid)            
+            'ybasisGridDistance' : 10,                          //基準電極間Y方向距離(unit: grid)            
+            'x1basisGridCoordinate' : 2,                        //基準電極1XGrid座標
+            'y1basisGridCoordinate' : 12,                       //基準電極1XGrid座標
+            'targetRad' : -0.7853981633974483                   //基準電極を結ぶ線分とX軸の角度(unit: radian)
+            'touchedClearInterval' : 200,						//タッチイベント終了後に蓄積している座標を初期化するまでのインターバル(msec)
+
+            */
+
+            //'touchElement': document,// <- 要素指定でタッチイベントを観測する例
+            'touchElement': 'target-element',						// タッチを受け付ける要素(ID又は要素で指定)
+
+            'touchWaitTime': 1000,							    // カード識別成功時に次のタッチを受け付けるまでのインターバル(msec)
+            //'fixPosition' : true,                              //動作判定、タッチ方向判定時のpositionの戻り値制御、false : position=analyze.point , true : position=1 cardId = cardId + "-" + analyze.point
+            //'rotationDetect' : 1,                               //rotation判定指定配列（0:rotation判定無、1:rotation判定有、{判定有の場合、タッチパネルX座標軸の＋方向ベクトルと基準電極原点側から遠端側に向かうベクトルのなす角0°：callback.point=1、90°：2、180°：3、270°：4}とする。）
+            //'motionDetectNum' : [2,2,2,1,1,1,1],                //motion制御指定配列（配列の要素番号 0:motion制御有、1:下、2:上、3:左、4:右、5:右回転、6:左回転 の値を 閾値制御の場合 1 疑似アナログ制御の場合 2 にする。例えば、上下を閾値制御、左右回転をアナログ制御したい場合は、[2,1,1,0,0,2,2]と指定する）
+            //'cardIdNum' : ["S1-57","S1-107","S1-582","S1-599","S1-568","S1-536","S1-106","S1-649","S1-571","S1-96","S1-105","S1-586","S1-19"],                            //認証判定するID
+
+            //'touchedClearInterval' : 100,						//タッチイベント終了後に蓄積している座標を初期化するまでのインターバル(msec)
+	        ///'rotationThresholdAngle' : 30,                      	//rotation判定角度閾値(unit: degree)		20250305
+
+            //'transitTouchWaitTime': 20,							//motion制御カード移動中の識別成功時に次のタッチを受け付けるまでのインターバル(msec)
+            //'motionThresholdAngle' : 20,                        //motion制御回転角度閾値(unit: degree)
+            //'motionThresholdGridX' : 1,                       //motion制御X方向grid幅閾値
+            //'motionThresholdGridY' : 1,                         //motion制御Y方向grid幅閾値
+                    
+        };
+
+        var fileHeader= "id";
+
+        if(idOperationFlug.search("r") > 0){
+            console.log('r');
+            cardConf.fixPosition= true;
+            cardConf.rotationDetect= 1;
+            fileHeader= fileHeader + "r";
+        }
+        
+        if(idOperationFlug.search("m") > 0 ){
+           console.log('m');
+            cardConf.fixPosition= true;
+            cardConf.motionDetectNum =[1,-1,1,1,1,1,1,1];           //20251113      analyzerm-s1t4u3.js Rev3.2.0対応
+            fileHeader= fileHeader + "m";
+        }       
+
+        // カード解析時に呼ばれる処理群
+        var callbacks = {
+            /* カード解析開始直前に呼ばれる処理 */
+            'start': function() { // _cardConf.willStartCollbackKey: function() {
+                /* 必要に応じて処理を実装 */
+                console.log('start analyze');
+            },
+
+            /*カードでタッチした時に呼ばれる処理 */
+            '1': function(cardId) {
+
+                //------------------- タッチ方向×動作判定 ありの場合 ----------------------------------------------
+                let resultData = 'RN=1, '+ cardId + ", r= " + parseFloat(_cardAnalyzer.touchAngleDeg.toFixed(2)) + ", X= " + parseFloat(_cardAnalyzer.motionAnalogOut[0].toFixed(2)) + ", Y= "+ parseFloat(_cardAnalyzer.motionAnalogOut[1].toFixed(2)) + ", A= " + parseFloat(_cardAnalyzer.motionAnalogOut[2].toFixed(2))+ ", T= " + parseFloat(_cardAnalyzer.motionAnalogOut[3].toFixed(2));
+                console.log(resultData);
+                
+                let index='',idNum='',positionNum='',rotPositionNum='',movPositionNum='';
+                //if(_cardConf.fixPosition){
+                    index = cardId.indexOf("-", cardId.indexOf("-") + 1);		//cardIdの先頭から２つ目の"-"の先頭文字からの位置を算出
+                    if(index > 0) {
+                        positionNum= cardId.slice(index + 1);						//コールバックポジション
+                        movPositionNum= positionNum % 10;                           //動作判定結果
+                        rotPositionNum= positionNum - movPositionNum;               //タッチ方向判定値
+                        idNum=cardId.slice(0, index);								//ID番号                   
+                    } else {
+                        idNum=cardId;
+                    }
+                    console.log("idNum=",idNum,", positionNum=",positionNum); 
+                //}
+ 
+                if(cardId === expectCardIdNumber){
+                    //OK
+                    passFlg = 1; wrong_c = 0; error_c = 0; wrong_t = 0; error_t = 0; failFlg = 0;
+                    reCardId = cardId;
+                    codeStr = "";
+                    judgeStr = "Pass";
+
+                    document.getElementById("countButton").style.backgroundColor = "skyblue";
+
+                } else {
+                    passFlg = 0; wrong_c = 0; error_c = 0; wrong_t = 0; error_t = 0; failFlg = 0; codeStr = "";
+                    if(idNum !== expIdNum) { wrong_c = 1;  codeStr = "id-";}                         //ID誤認
+                    if(rotPositionNum !== expRotPositionNum) { wrong_t = 1;  codeStr = codeStr + "r-";}       //タッチ方向判定NG
+                    if(movPositionNum !== expMovPositionNum) { error_t = 1; codeStr = codeStr + "m-";}       //動作判定NG
+
+                    reCardId = cardId;
+                    judgeStr = "Fail";
+
+                    document.getElementById("countButton").style.backgroundColor = "lightcoral"; 
+                }
+
+                document.getElementById("i1text").innerHTML+=cardId + ", " + codeStr + judgeStr + " <br>";
+            
+                timestamp = new Date().toLocaleString('ja-JP', timeOptions); 
+                console.log(timestamp);
+
+                console.log(reCardId,codeStr,judgeStr);
+
+			    _cardAnalyzer.motionAnalogOut = [0,0,0,0];
+
+                return true;
+
+                /* ↑↑↑画面遷移しない場合の実装 trueを返却↑↑↑ */
+            },
+
+            '0': function(cardId){                                     //初期値取得後、カード移動中動作判定未満の場合
+
+                //document.getElementById("i1text").innerHTML+=cardId + "<br>";                
+                //timestamp = new Date().toLocaleString('ja-JP', timeOptions); 
+
+                document.getElementById('name').style.backgroundColor = "#fdff9f";           //認証後は、表題の背景色を戻す。
+
+                return true;
+            },            
+
+            /* カード解析エラー発生時に呼ばれる処理 */
+            'error': function(errorCode, errorMessage, errorId) { // cardConf.onErrorCallbackKey: function(errorCode, errorMessage, errorId) {
+                //errorCode 0: 正常, 1: 識別エラー, 3: 処理エラー
+
+                console.log('analyze error[' + analyzer.getErrorMessage(errorCode) + ']', errorMessage, errorId);                
+
+                //if(_cardConf.motionDetectNum[0] < 1){                                                         //画面表示が大量になるため出力しない。
+                //    document.getElementById("i1text").innerHTML+="errorCode" + errorCode ;  //+ "<br>";
+                //}
+
+                timestamp = new Date().toLocaleString('ja-JP', timeOptions);
+                
+                console.log(timestamp);
+
+                //NG ID変換出来ないコード
+                passFlg = 0;
+                wrong_c = 0;
+                error_c = errorCode;
+                wrong_t = 0;
+                error_t = 0;                    
+                failFlg = 0;
+                reCardId = errorId;
+                
+
+                document.getElementById("countButton").style.backgroundColor = "lightcoral"; 
+
+            }
+        };
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // ページがロードされたときに、localStorageから値を取得して表示
+            const savedPhone = localStorage.getItem('smartphone');
+            const savedCardId = localStorage.getItem('expectCardIdNum');
+            const savedProduct = localStorage.getItem('product');
+            const savedPerson = localStorage.getItem('person');
+            const savedEnvironment = localStorage.getItem('environment');
+            const savedMeasNum = localStorage.getItem('measNum');
+
+            if (savedPhone) { phone.value = savedPhone; phoneStr= phone.value;}
+            if (savedCardId) { expectCardIdNum.value = savedCardId; expectCardIdNumber=expectCardIdNum.value;}
+            if (savedProduct) { product.value = savedProduct; productStr=product.value;}
+            if (savedPerson) { person.value = savedPerson; personStr=person.value;}
+            if (savedEnvironment) { environment.value = savedEnvironment; environmentStr=environment.value;}
+            if (savedMeasNum) { measNum.value = savedMeasNum; measNumber=measNum.value;}
+
+            //
+            analyzer = initCtrl(callbacks, cardConf);
+
+            //analyzer.stop();
+
+         });
+
+    </script>
+</head>
+
+<body>
+    <div id="start-page" style="display: block;">
+        <h1 id="name">Recognition rate New test</h1>
+
+        <form id="inputForm">
+            <label for="person">Person Name:</label>
+            <input type="text" id="person"  size="15"><br>
+            <label for="smartphone">Smartphone :</label>
+            <input type="text" id="smartphone" size="15"><br>
+            <label for="product">Product type:</label>
+            <input type="text" id="product"  size="15"><br>            
+            <label for="expectCardIdNum">ID(-Position):</label>
+            <input type="text" id="expectCardIdNum"  size="15"><br>
+            <label for="environment">Environment:</label>
+            <input type="text" id="environment"  size="15">
+            <label for="measNum">Test Number :</label>
+            <input type="text" id="measNum"  size="15">
+
+            <!--label for="fileNameInput">file Name:</label-->
+            <!--input type="text" id="fileNameInput" name="fileNameInput" value="filename" required-->
+            <input type="button" id="fileName-button" value="Enter" onclick="fileNameChange"><br>
+        
+        </form>
+
+        <p id="fileNameInput"></p>
+
+        <input type="button" id="start-button" value="Test Count Start" onclick="startTestCount">
+
+        <input type="button" id="end-button" value="Upload Result" onclick="upload()"><br>
+
+        <br>
+
+        <div id="meas-list">
+            <h2>Measurement Conditions</h2>
+            <p id="measCond" style="color: red;">[Enter]ボタン、次に[Test Count Start]ボタンを押して測定を開始してください。</p>
+        </div>
+        <br>
+        
+        <div id="send-mail" style="display: none;">
+            <!--PhpServer multi-touchcard,com PHP用-->
+            <!--form action="./script/send.php" method="post">
+                <button id="send-button" type="submit">Finish Mail Send</button>
+            </form><br-->
+            <!--Linux LocalServer,javascript アンケート回答ユーザーが送信必要-->
+            <input type="button" id="send-button" value="Finish Mail Send" onclick="sendMailJs()"><br>
+        </div>
+                
+    </div>
+
+    <div id="measer-page" style="display: none;">
+
+        <h1 id="expectMeasValue" style="color: red;">Expected Measuerment Value</h1>        
+
+        <button id="countButton">0</button><!--br-->
+
+        <div id="target-element" style="background-color:lightcyan;"><!--/div-->
+            <p id="i1text"></p>
+        </div>
+    </div>
+
+    <script>
+
+        // ユーザーエージェントの取得            
+        var userAgent = '';
+        userAgent = navigator.userAgent;
+        console.log("userAgent:", userAgent);
+        console.log("L438 measNumber=",measNumber);
+        console.log("L439 measCondArry[measNumber][0]=",measCondArry[measNumber][0]);
+
+
+        // 各入力欄のデフォルト値を取得
+        const person = document.getElementById('person');
+        personStr = localStorage.getItem('person');
+        person.addEventListener('input',function(){
+            localStorage.setItem('person',person.value);
+            person.value = localStorage.getItem('person');        
+        });
+        const phone = document.getElementById('smartphone');
+        phoneStr = localStorage.getItem('smartphone');
+        phone.addEventListener('input',function(){
+            localStorage.setItem('smartphone',phone.value);
+            phone.value = localStorage.getItem('smartphone');        
+        });
+        const product = document.getElementById('product');
+        productStr = localStorage.getItem('product');
+        product.addEventListener('input',function(){
+            localStorage.setItem('product',product.value);
+            product.value = localStorage.getItem('product');        
+        });
+        const expectCardIdNum = document.getElementById('expectCardIdNum');
+        expectCardIdNumber = localStorage.getItem('expectCardIdNum');
+        expectCardIdNum.addEventListener('input',function(){
+            localStorage.setItem('expectCardIdNum',expectCardIdNum.value);
+            expectCardIdNum.value = localStorage.getItem('expectCardIdNum');        
+        });
+        const environment = document.getElementById('environment');
+        environmentStr = localStorage.getItem('environment');
+        environment.addEventListener('input',function(){
+            localStorage.setItem('environment',environment.value);
+            environment.value = localStorage.getItem('environment');        
+        });
+        const measNum = document.getElementById('measNum');
+        measNumber = localStorage.getItem('measNum') || 0;
+        console.log("L526 measNumber=",measNumber);        
+        measNum.addEventListener('input',function(){
+            localStorage.setItem('measNum',measNum.value);
+            measNum.value = localStorage.getItem('measNum');
+            console.log("L529 measCondArry=",measCondArry[measNum.value]);
+            console.log("L530 measNum.value=",measNum.value);
+            localStorage.setItem('idOperationFlug', measCondArry[measNum.value][3]);
+            localStorage.setItem('expectCardIdNum', measCondArry[measNum.value][1]);            //期待カードID番号         
+            localStorage.setItem('product', measCondArry[measNum.value][0]);                    //最初の測定品種
+            localStorage.setItem('measNum', measNum.value);                                     //測定条件番号、0から始まる連番で、測定条件の配列の順番に対応させる。                 
+            expectCardIdNum.value = localStorage.getItem('expectCardIdNum');
+            product.value = localStorage.getItem('product');
+            idOperationFlug= localStorage.getItem('idOperationFlug');
+
+            console.log("L539 cardConf.fixPosition= ",cardConf.fixPosition);
+            console.log("L539 idOperationFlug= ",idOperationFlug);
+
+            //20260623
+            fileHeader="id";
+            if(idOperationFlug.search("r") > 0){
+                console.log('r');
+                if(idOperationFlug.search("m") > 0 ){
+                    console.log('m');
+                    cardConf.fixPosition= true;
+                    cardConf.rotationDetect= 1;
+                    cardConf.motionDetectNum =[1,-1,1,1,1,1,1,1]; 
+                    fileHeader= fileHeader + "rm";
+                } else {
+                    cardConf.fixPosition= true;
+                    cardConf.rotationDetect= 1;
+                    cardConf.motionDetectNum =[0,0,0,0,0,0,0,0]; 
+                    fileHeader= fileHeader + "r";
+                } 
+            } else {
+                if(idOperationFlug.search("m") > 0 ){
+                    console.log('m');
+                    cardConf.fixPosition= true;
+                    cardConf.rotationDetect= 0;
+                    cardConf.motionDetectNum =[1,-1,1,1,1,1,1,1];
+                    fileHeader= fileHeader + "m";
+                } else {
+                    cardConf.fixPosition= true; //false;
+                    cardConf.rotationDetect= 0;
+                    cardConf.motionDetectNum =[0,0,0,0,0,0,0,0];                 
+                }
+            }
+        });
+
+        console.log("L533 measNum=",measNum);
+        measNumber = measNum.value || 0;
+        if(measNumber > measCondArry.length){ measNumber=0;}
+        console.log("L536 measNumber=",measNumber);
+        //console.log("L537 measCondArry[measNumber][0]=",measCondArry[measNumber][0] );
+
+        console.log("L548 cardConf.fixPosition= ",cardConf.fixPosition);
+
+        personStr=person.value;
+        phoneStr=phone.value;
+        productStr=product.value;
+        expectCardIdNumber=expectCardIdNum.value;
+        environmentStr=environment.value;
+
+        //var expectCardIdNum= document.getElementById('expectCardIdNum').value;
+        var indexExp='',
+            expIdNum='',
+            expPositionNum='',
+            expRotPositionNum='',
+            expMovPositionNum=''; 
+
+        var fileNameStr = fileHeader + "_" + phoneStr + "_" + expectCardIdNumber + "_" + environmentStr + "_" + productStr + "_" + personStr + "_" + measNumber;       //認識率テスト結果格納ファイル名、
+        document.getElementById('fileNameInput').innerHTML = "File Name:<br>" + fileNameStr;
+
+
+        const element = document.getElementById('target-element');              // タッチイベントを取得する要素を取得
+
+        const fileNameButton = document.getElementById("fileName-button");        //ファイル名のヘッダー部分入力 
+        const startButton = document.getElementById("start-button");              //認識率テスト開始ボタン
+        const endButton = document.getElementById("end-button");                  //テスト終了、結果のファイルダウンロード
+        const testCountButton = document.getElementById('countButton');           //テスト回数カウントボタン
+        const sendMaildiv= document.getElementById('send-mail');                       //メール送信Div 
+        const sendMailButton = document.getElementById('send-button');           //メール送信ボタン      
+
+        document.getElementById('expectMeasValue').innerHTML = "No.: " + measNumber + " , " + measCondArry[measNumber][0] + " , " + measCondArry[measNumber][1] + " , " + measPositionArry[measNumber]+"<br>" ; //期待カードID入力欄
+
+        // クリックイベントのリスナーを追加
+        fileNameButton.addEventListener('click', fileNameChange);
+        startButton.addEventListener('click', startTestCount);
+        endButton.addEventListener('click', upload);         
+        //testCountButton.addEventListener('click', testCount);
+
+        testCountButton.addEventListener('touchstart', testCount);        
+        //window.onload = initialFunc() ;
+
+        sendMailButton.addEventListener('click', sendEndMail);          
+
+        if(!uploadFlg){                 //multi-touchcard.comでアクセスされた場合は、アップロード処理を行わずスマホダウンロードホルダに格納するため、終了ボタンをダウンロード用に変更   20260609
+            endButton.value="Download Result";
+            endButton.onclick="download";
+            endButton.addEventListener('click', download);   
+        }
+
+        //認識率テストのタッチ回数のカウント        
+        function testCount() {
+
+            count++;
+            document.getElementById('countButton').innerText = count;
+
+            console.log("testCount= ",count);
+
+            if(error_c > 0 ) {
+                document.getElementById("i1text").innerHTML+= "analyze err " + error_c + "<br>"; 
+            };
+
+            if((passFlg + wrong_c + wrong_t + error_c + error_t) < 0.9) {
+                failFlg = 1;
+                reCardId = "";
+                timestamp = new Date().toLocaleString('ja-JP', timeOptions);
+                document.getElementById("i1text").innerHTML+="detect error" + "<br>"; 
+            };
+
+            dataArry.push([maker,phoneStr,productStr,expectCardIdNumber,environmentStr,personStr,count,expectCardIdNumber,reCardId,passFlg,wrong_c,wrong_t,error_c,error_t,failFlg,animation,fileNameStr,fileindex,userAgent,timestamp]);     //prpduct add 20260615
+
+            console.log(dataArry);
+
+            passFlg = 0;
+            wrong_c = 0;
+            error_c = 0;
+            wrong_t = 0;
+            error_t = 0;
+            failFlg = 0;
+
+            //------- 20260121 タッチ座標解析
+            if(typeof touchAnalysisEnable=== "undefined"){touchAnalysisEnable=false;}								//touchAnalysisEnable未定義HTML対応
+
+            if(touchAnalysisEnable){
+                let interTime =  performance.now();
+                touchDataArry.push([-1,0,0,0,0,0,0,0,0,0,0,0,0,0,interTime,"interval",0,0,-1]);      //20260121 ID認証後次のタッチデータとの切替りを示すリスタート"0"データ
+                console.log("touchDataArry",touchDataArry);
+            }   
+            //-------
+
+            setTimeout(() => {
+                document.getElementById("countButton").style.backgroundColor = "lightyellow"; 
+            }, 300);
+
+            if (count >= 10) {
+                alert('10回タッチしました。データ保存して終了します。');
+                count = 0; // カウントをリセット
+                document.getElementById('countButton').innerText = count;
+
+                //表示を初期ページに戻す
+                let startPage =document.getElementById("start-page");
+                let measerPage =document.getElementById("measer-page");
+                measerPage.style.display="none";
+                startPage.style.display="block";
+
+                if(typeof touchAnalysisEnable=== "undefined"){touchAnalysisEnable=false;}								//touchAnalysisEnable未定義HTML対応
+
+                // uploadボタンの色を変更
+                endButton.style.backgroundColor =  "red";
+                endButton.style.color =  "white";
+
+                if(touchAnalysisEnable){
+                    if(uploadFlg){
+                         upload("crd-"+ fileNameStr, touchDataArry);       //解析用タッチ座標データCVSファイルのローカルホストへのアップロード
+                    } else {
+                         download("crd-"+ fileNameStr, touchDataArry);      //解析用タッチ座標データCVSファイルのスマホダウンロードホルダへの格納
+                    }
+                }
+
+                //download();  // 認識率データのjsonfile格納
+                if(uploadFlg){
+                    upload("log-"+ fileNameStr, dataArry);          //認識率データCVSファイルのローカルホストへのアップロード
+                    nextCondStrage()                                //次の測定条件に更新
+                } else {
+                    download("log-"+ fileNameStr, dataArry);        //認識率データの格納
+                    nextCondStrage()                                //次の測定条件に更新
+                }
+
+                setTimeout(() => {
+  
+                    endButton.style.backgroundColor =  "buttonface";
+                    endButton.style.color =  "";
+                    startButton.style.backgroundColor =  "buttonface";
+                    startButton.style.color =  "";                
+                    fileNameButton.style.backgroundColor =  "buttonface";
+                    fileNameButton.style.color =  "";
+
+                    console.log("Delayed for 1 second.");
+
+                    //location.reload();
+
+                }, 1000);                   //2000);    20241016
+
+            }
+
+        };
+
+
+        //入力した項目にファイル名を変更        
+        function fileNameChange(){
+            // 各入力欄の値を取得
+            phoneStr = phone.value;
+            expectCardIdNumber = expectCardIdNum.value;
+            environmentStr = environment.value;
+            productStr = product.value;                  //product add 20260615
+            personStr = person.value;
+            measNumber = measNum.value;
+
+            // ファイル名を作成
+            fileNameStr = fileHeader + "_" + phoneStr + "_" + expectCardIdNumber + "_" + environmentStr + "_" + productStr + "_" + personStr + "_" + measNumber;   //product add 20260615
+            document.getElementById('fileNameInput').innerHTML = "File Name:<br>" + fileNameStr;
+
+            fileindex = fileindex + 1;
+
+            fileNameButton.style.backgroundColor =  "#696969";
+            fileNameButton.style.color =  "white";            
+
+            console.log("file name:", fileNameStr);
+            console.log("file Index:", fileindex); 
+            
+            //20251002
+            indexExp = expectCardIdNumber.indexOf("-", expectCardIdNumber.indexOf("-") + 1);		//cardIdの先頭から２つ目の"-"の先頭文字からの位置を算出
+            if(indexExp > 0) {
+                expPositionNum= expectCardIdNumber.slice(indexExp + 1);						//コールバックポジション
+                expMovPositionNum= expPositionNum % 10;                                     //動作判定値、コールバックポジション 2,3,4,5,6,7
+                expRotPositionNum= expPositionNum - expMovPositionNum;                      //タッチ方向判定値、コールバックポジション 10,20,30,40
+                expIdNum=expectCardIdNumber.slice(0, indexExp);								//ID番号 
+                console.log("expIdNum=",expIdNum,", expPositionNum=",expPositionNum,", expRotPositionNum=",expRotPositionNum,", expMovPositionNum=",expMovPositionNum);                     
+            }
+
+            //console.log("L718 reload");
+            //location.reload();
+
+            document.getElementById('measCond').innerHTML = "No.:" + measNumber + ", " + productStr + ", " + expectCardIdNumber +", " + measPositionArry[measNumber]+"<br>" ;
+
+            document.getElementById('expectMeasValue').innerHTML = "No.:" + measNumber + ", " + productStr + ", " + expectCardIdNumber +", " + measPositionArry[measNumber]+"<br>" ;
+
+        };
+
+
+        //スタートボタンクリック後にカードタッチ待受処理開始
+        function startTestCount() {
+            if (typeof initCtrl !== 'undefined') {
+
+                console.log("start test count");
+
+                startButton.style.backgroundColor =  "#0004fd";
+                startButton.style.color =  "white";
+
+                //表示を測定ページに変更
+                let startPage =document.getElementById("start-page");
+                let measerPage =document.getElementById("measer-page");
+                startPage.style.display="none";
+                measerPage.style.display="block";
+
+                testCountButton.style.pointerEvents = "auto";
+
+                //------- 20260121 タッチ座標解析
+                if(typeof touchAnalysisEnable=== "undefined"){touchAnalysisEnable=false;}								//touchAnalysisEnable未定義HTML対応
+
+                if(touchAnalysisEnable){
+                    let startTime = performance.now();
+                    console.log("startTime",startTime);                    
+                    touchDataArry.push([-1,0,0,0,0,0,0,0,0,0,0,0,0,0,startTime,"start",0,0,-1]);      //20260121 スタート"0"データ ,no,identifier add 20260123
+                }   
+                //-------
+                if (analyzer && typeof analyzer.stop === 'function') {      //////
+                    analyzer.stop();
+                }
+
+                analyzer = initCtrl(callbacks, cardConf);
+
+                //analyzer.start()
+            }
+        };
+
+        function nextCondStrage(){
+
+            analyzer.stop();
+
+            phoneStr = phone.value;
+            expectCardIdNumber = expectCardIdNum.value;
+            environmentStr = environment.value;
+            productStr = product.value;
+            personStr = person.value;
+            measNumber = measNum.value;
+
+            // ボタンが押されたときに入力データを更新してlocalStorageに保存
+            console.log("L715 measNumber",measNumber);
+            measNumber++;   //20260615
+
+            if(measNumber > countNum-1) {                  //測定条件数を超えたらlocalStorageとinputの値をクリア
+                
+                localStorage.clear();
+                
+                phone.value="";
+                expectCardIdNum.value="";
+                environment.value="";
+                product.value="";
+                person.value="";
+                measNum.value="";
+                
+                measNumber= -1;
+                console.log("L726 measNumber",measNumber);
+                localStorage.setItem('measNum', measNumber); 
+
+                //analyzer.stop();
+
+                //測定終了メール送信
+                sendMaildiv.style.display="block";
+
+                document.getElementById('measCond').innerHTML = "測定終了です。下の [Finish Mail Send] ボタンを押してください。" ;
+
+                //sendMail();
+
+            } else {
+                //次の測定条件に更新
+                console.log("L722 measNumber",measNumber);
+                localStorage.setItem('smartphone',phoneStr);                                    //スマホ
+                localStorage.setItem('expectCardIdNum', measCondArry[measNumber][1]);          //期待カードID番号         
+                localStorage.setItem('person', personStr);                                     //測定者コード
+                localStorage.setItem('product', measCondArry[measNumber][0]);                  //最初の測定品種
+                localStorage.setItem('environment',  environmentStr);                          //測定環境
+                localStorage.setItem('idOperationFlug',  measCondArry[measNumber][3]);         //測定仕様フラグ
+                localStorage.setItem('measNum', measNumber);                                   //測定条件番号、0から始まる連番で、測定条件の配列の順番に対応させる。
+
+                console.log("L809 reload");
+                location.reload();
+            }
+        }
+
+        function sendEndMail(){
+                            // uploadボタンの色を変更
+                sendMailButton.style.backgroundColor =  "red";
+                sendMailButton.style.color =  "white";
+
+                sendMailJs(personStr)             //アンケート用　20260618
+                setTimeout(() => {
+  
+                    sendMailButton.style.backgroundColor =  "buttonface";
+                    sendMailButton.style.color =  "";
+
+                    console.log("Delayed for 5 second.");
+
+                    //sendMaildiv.style.display="none";
+                
+                    document.getElementById('measCond').innerHTML = "ご協力ありがとうございました。" ;
+
+                    sendMaildiv.style.display="none";
+
+                }, 5000);
+
+
+                //sendMaildiv.style.display="none";
+                
+                //location.reload();
+        }
+
+        // ファイルをアップロードする。
+        function upload(fileNameStr, dataArry){
+
+            // 現在の日付を取得
+            const currentDate = new Date();
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+            const day = String(currentDate.getDate()).padStart(2, "0");
+
+            // 配列データをCSV文字列に変換
+            const csvData = dataArry.map(row => row.join(",")).join("\n");
+
+            console.log("csvData= ",csvData);
+
+            // ファイル名に日付を組み込む
+            const fileName = fileNameStr + "_" + year + month + day + ".csv";
+
+            // CSVデータをBlobに変換
+            const blob = new Blob([csvData], { type: 'text/csv' });
+
+            // フォームデータを作成
+            const formData = new FormData();
+            formData.append('file', blob, fileName); // Blobとしてファイルを追加
+            formData.append('filename', fileName); // ファイル名を追加
+
+            //console.log("formData= ",formData);            
+        
+            // CSVデータをサーバーへPOSTする
+            if (uploadAccessPath) {
+                fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    })
+                .then(response => response.text())
+                .then(data => {
+                    console.log('Success:', data);      //成功時の処理
+                })
+                .catch((error) => {
+                    console.error('Error:', error);     //エラー発生時の処理
+                });
+            } else {
+                fetch('https://multi-touchcard.com/Recognition_rate_LSC/script/upload.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                .then(response => response.text())
+                .then(data => {
+                    console.log('Success:', data);      //成功時の処理
+                })
+                .catch((error) => {
+                    console.error('Error:', error);     //エラー発生時の処理
+                });
+            }
+
+            dataArry.length = 0;
+        }    
+
+        // ファイルとして保存する
+        function download(fileNameStr, dataArry) {
+
+            // 現在の日付を取得
+            const currentDate = new Date();
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+            const day = String(currentDate.getDate()).padStart(2, "0");
+            
+
+            // 配列データをCSV文字列に変換
+            const csvString = dataArry.map(row => row.join(",")).join("\n");
+
+            // ファイル名に日付を組み込む
+            const fileName = fileNameHeader + fileNameStr + "_" + year + month + day;      // ".json";
+
+            // Blobオブジェクトを作成する            
+            const blob = new Blob([csvString], { type: 'text/csv' });
+
+            // Blob URLを作成する
+            const url = URL.createObjectURL(blob);
+
+            // <a>タグを作成する
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+
+            // <a>タグをクリックする
+            link.click();
+
+            // URLを解放する
+            URL.revokeObjectURL(url);
+
+            dataArry.length = 0;
+        }
+
+        // 完了メール送信
+        function sendMailJs(personStr) {
+            const to = "communication@multi-touchcard.com";
+            const subject = encodeURIComponent("【測定完了報告兼アンケート回答】");
+            const body = encodeURIComponent("こんにちは、" + personCode + " 様 測定完了です。\n下記のアンケートに回答をお願いします。\n（選択肢のある回答は、選択肢の中から一つ答えを選んでください。）\n\nQ.1：年齢\nA.1：\n\nQ.2：認証する状態で最も持ち易い品種は？\n選択肢：(A)card  (B)acsta  (C)plate\nA.2：\n\nQ.3：認証する状態で最も持ち辛い品種は？\n選択肢：(A)card  (B)acsta  (C)plate\nA.3：\n\nQ.4：認証判定動作が容易な動作条件は？\n選択肢：(A)ID認証  (B)下移動  (C)上移動\n  (D)右移動  (E)左移動  (F)左回転  (G)右回転\nA.4：\n\nQ.5：認証判定動作が難しい動作条件は？\n選択肢：(A)ID認証  (B)下移動  (C)上移動\n  (D)右移動  (E)左移動  (F)左回転  (G)右回転\nA.5：\n\nQ.6：製品の使い方説明動画は判りやすい？\n選択肢：(A)判りやすい\n  (B)どちらかと言えば判りやすい\n  (C)どちらとも言えない\n  (D)どちらかと言えば判りにくい\n  (E)判りにくい\nA.6：\n\nQ.7：測定方法の説明動画は判りやすい？\n選択肢：(A)判りやすい\n  (B)どちらかと言えば判りやすい\n  (C)どちらとも言えない\n  (D)どちらかと言えば判りにくい\n  (E)判りにくい\nA.7：\n\nQ.8：測定方法の説明資料は判りやすい？\n選択肢：(A)判りやすい\n  (B)どちらかと言えば判りやすい\n  (C)どちらとも言えない\n  (D)どちらかと言えば判りにくい\n  (E)判りにくい\nA.8：\n\nQ.9：測定用ウエブページは使いやすい？\n選択肢：(A)使いやすい\n  (B)どちらかと言えば使いやすい\n  (C)どちらとも言えない\n  (D)どちらかと言えば使いにくい\n  (E)使いにくい\nA.9：\n\nQ.10：測定の作業量、作業時間は？\n選択肢：(A)問題ない範囲、集中して作業出来た\n  (B)許容範囲\n  (C)どちらとも言えない\n  (D)どちらかと言えば多い、集中力を維持するのが難しい\n  (E)多すぎて、集中力が持たなかった\nA.10：\n\nQ.11：その他御意見等\nA.11：\n\n\n\nアンケートご協力ありがとうございました。\n");
+
+            location.href =
+                `mailto:${to}?subject=${subject}&body=${body}`;
+        }
+
+    </script>
+
+</body>
+</html>

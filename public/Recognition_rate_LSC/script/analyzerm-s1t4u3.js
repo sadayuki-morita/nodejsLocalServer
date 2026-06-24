@@ -52,7 +52,8 @@
 
 if(typeof directoryPass === "undefined"){directoryPass = "./script";}		//HTMLでdirectoryPassが定義されていない場合のデフォルト値設定 20260529
 
-let srcCardrmFile = directoryPass + "/cardrm-s1t4u3-ob.js";
+//let srcCardrmFile = directoryPass + "/cardrm-s1t4u3-ob.js";
+let srcCardrmFile = directoryPass + "/cardrm-s1t4u3.js";
 let srcIdFile;
 
 if(typeof idSerise=== "undefined"){							//SKDのソースの場合、phpファイルを設定　20260128 ディレクトリ構成見直し 20260518

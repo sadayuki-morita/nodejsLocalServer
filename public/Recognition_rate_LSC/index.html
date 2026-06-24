@@ -141,7 +141,7 @@
                     
         };
 
-        var fileHeader= "rid";
+        var fileHeader= "id";
 
         if(idOperationFlug.search("r") > 0){
             console.log('r');
@@ -307,7 +307,7 @@
 
         <input type="button" id="start-button" value="Test Count Start" onclick="startTestCount">
 
-        <input type="button" id="end-button" value="Upload Result" onclick="upload"><br>
+        <input type="button" id="end-button" value="Upload Result" onclick="upload()"><br>
 
     </div>
 
@@ -328,7 +328,6 @@
         console.log("userAgent:", userAgent);
 
         // 各入力欄のデフォルト値を取得
-
         var phone = document.getElementById('smartphone').value;
         var expectCardIdNum= document.getElementById('expectCardIdNum').value;
         var indexExp='',

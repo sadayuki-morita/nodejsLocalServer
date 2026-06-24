@@ -36,7 +36,7 @@ $subject = "【評価担当】$name 様";
 
 $body = "評価完了しました。";
 
-$email = 'sadayuki.morita@multi-touchcard.com';
+$email = 'noreply@multi-touchcard.com';
 
 //$message = 'お問い合わせがありました。';
 
@@ -51,7 +51,7 @@ $headers .= "Reply-To: {$email}\n";
 // メール送信
 if (mb_send_mail($to, $subject, $body, $headers)) {
     echo "送信に成功しました。";
-    header("Location: ../debug.html");
+    header("Location: ../customer-eval.html");
     exit;
 } else {
     echo "送信に失敗しました。";
