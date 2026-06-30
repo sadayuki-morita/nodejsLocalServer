@@ -14,7 +14,8 @@
             - ファイルの保存の場所と方法は、以下のパラメータで制御する
                 + uploadFlg ：アップロードを行うかどうかのフラグ true:行う、false：スマホのダウンロードフォルダに格納
                 + uploadAccessPath ：node.jsでアップロード処理を行う場合：true、phpでアップロード処理を行う場合：false 
-                + currentUrl ：multi-touchcard.comでアクセスされた場合は、upload.phpでアップロード処理を行う 
+                + currentUrl ：multi-touchcard.comでアクセスされた場合は、upload.phpでアップロード処理を行う
+                + mailSendFlg  : 全測定完了時に完了通知Mailを送るかどうかのフラグ Mail送信、Mail送信無し（Finish Mail Send ボタンを非表示にして送信出来ないようにする。) 
             - ファイルは、両方ともCSV形式。Logの配列要素項目は、従来のC-Stamp Logger.jsのLogファイルと異なり、product（品種）が追加されている。
         - 測定条件は、localStorageに保存されるので、測定途中でブラウザクローズ、ページ遷移、スマホ画面クローズ、スマホ電源OFFのいずれもOK。
         - 測定完了後、完了ボタンを押すと自動的にメーラーが立ち上がりアンケートが本文に記載されたメールの下書きが立ち上がるのでアンケートに回答してメール送信してもらう仕様
@@ -54,11 +55,14 @@
         if(currentUrl.includes("multi-touchcard.com")){             //multi-touchcard.comでアクセスされた場合は、upload.phpでアップロード処理を行う  20260612
             uploadAccessPath = false;
         }
-        //uploadFlg=false;
+
+        var mailSendFlg=true;                                       //全測定完了時に完了通知Mailを送るかどうかのフラグ Mail送信、Mail送信無し（Finish Mail Send ボタンを非表示にして送信出来ないようにする。) 
+        //var mailSendFlg=false;                                       //全測定完了時に完了通知Mailを送るかどうかのフラグ Mail送信、Mail送信無し（Finish Mail Send ボタンを非表示にして送信出来ないようにする。) 
+
         console.log("currentUrl=",currentUrl);
         console.log("uploadFlg=",uploadFlg);
         console.log("uploadAccessPath=",uploadAccessPath);
-
+        console.log("mailSendFlg=",mailSendFlg);
         
     //--------------------------------------
         //測定条件の表示データの生成準備
@@ -847,10 +851,10 @@
                 //analyzer.stop();
 
                 //測定終了メール送信
-                sendMaildiv.style.display="block";
-
-                document.getElementById('measCond').innerHTML = "測定終了です。下の [Finish Mail Send] ボタンを押してください。" ;
-
+                if(mailSendFlg){
+                    sendMaildiv.style.display="block";
+                    document.getElementById('measCond').innerHTML = "測定終了です。下の [Finish Mail Send] ボタンを押してください。" ;
+                }
                 //sendMail();
 
             } else {
