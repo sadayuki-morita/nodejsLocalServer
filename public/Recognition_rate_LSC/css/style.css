@@ -79,10 +79,10 @@ canvas {
     text-align:  center;
     background-color: lightyellow;       /*skyblue;*/
     /*width: 50%;*/
-    width : 50vw;                           /*add 20251225*/                       
-    height : 5vh;
+    width : 80vw;       /*50vw;     20260630                           /*add 20251225*/                       
+    height : 7.5vh;     /*5vh;      20260630    */
     font-weight: bold;
-    font-size: 20px;
+    font-size: 30px;    /*20px;     20260630    */
     padding: 5px;
     display: block;
     margin-top: 15px;
